@@ -1,0 +1,12 @@
+{
+  "source": "https://gist.github.com/acmerfight/0a01249ef72970d07a2603dbb629e80f",
+  "revision": "c98dbb10cf23c30e83d5d744905101b0880887a0",
+  "sha256": {
+    "LICENSE": "72380798af61d6131287b0dd3c8dc5345535df641002fece3a02d7ef109c5f8e",
+    "capture_keys.py": "0b0b9f9296bf02219c07537827ed9ce97671611ffeab36572bedb267a7704d65",
+    "bootstrap_keys.py": "ce8596107df3ca3715c8b63b522bbcc84148207217fade3b642975323c65b31c",
+    "sqlcipher_probe.py": "5133370736ef2f5d0119c4cca942ecb56ec4db632b95f1c591d35d863e22f68b",
+    "wechat_db.py": "016fec5dd394df88ccf341032f2b131685bb195be5c186900e3c6577dd4e70e8",
+    "disk_inventory.py": "09cc9dcc302af92891d18609d011723b042c841502095fe546e2f29dc4fb3cd6"
+  }
+}
