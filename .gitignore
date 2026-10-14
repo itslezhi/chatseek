@@ -1,0 +1,13 @@
+.venv/
+.private/
+.wechat-local*/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+*.db
+*.db-wal
+*.db-shm
+keys*.json
+*.app/
+*.disabled/
