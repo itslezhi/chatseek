@@ -19,8 +19,8 @@
 需要 Apple Silicon Mac、Python 3.12、联网下载依赖及公共模型。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
 
 ```sh
-git clone https://github.com/itslezhi/wechat-rag.git
-cd wechat-rag
+git clone https://github.com/itslezhi/chatseek.git
+cd chatseek
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
