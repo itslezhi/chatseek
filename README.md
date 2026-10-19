@@ -18,7 +18,7 @@
 
 需要 Apple Silicon Mac、Python 3.12、联网安装依赖。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
 
-希望省去单独下载向量模型，可在 [GitHub Releases](https://github.com/itslezhi/chatseek/releases/latest) 下载 **ChatSeek-source-with-model.zip**，解压后进入 ChatSeek 目录，再从下面的创建虚拟环境步骤开始。这个包包含公共模型，仍需联网安装 Python 依赖；普通 Git 克隆不包含模型权重。
+希望省去单独下载向量模型，可在 [GitHub Releases](https://github.com/itslezhi/chatseek/releases) 下载 **ChatSeek-source-with-model.zip**，解压后进入 ChatSeek 目录，再从下面的创建虚拟环境步骤开始。这个包包含公共模型，仍需联网安装 Python 依赖；普通 Git 克隆不包含模型权重。
 
 ```sh
 git clone https://github.com/itslezhi/chatseek.git
