@@ -1,0 +1,25 @@
+[Unit]
+Description=ChatSeek beta model gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=chatseek
+Group=chatseek
+WorkingDirectory=/opt/chatseek
+EnvironmentFile=/etc/chatseek-gateway.env
+ExecStart=/usr/bin/python3 /opt/chatseek/server.py --db /var/lib/chatseek/usage.sqlite3 serve --port 8787
+StateDirectory=chatseek
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

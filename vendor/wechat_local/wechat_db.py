@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -58,10 +59,33 @@ class Reader:
         # Never select the first of multiple same-name contacts.
         return rows
 
+    def account_id(self):
+        # The account directory contains an installation suffix, not part of
+        # the WeChat ID. Validate the remaining ID against the contact DB.
+        candidate = re.sub(r'_[0-9a-fA-F]+$', '', self.root.parent.name)
+        with self.open(self.root/'contact/contact.db') as db:
+            rows = db.query('SELECT username FROM contact WHERE username='+literal(candidate))
+        return candidate if len(rows) == 1 else None
+
+    def sender_names(self, sender_ids):
+        ids = sorted({value for value in sender_ids if value})
+        result = {}
+        if not ids:
+            return result
+        with self.open(self.root/'contact/contact.db') as db:
+            for offset in range(0, len(ids), 200):
+                values = ','.join(literal(value) for value in ids[offset:offset+200])
+                for row in db.query('SELECT username,nick_name,remark FROM contact WHERE username IN ('+values+')'):
+                    result[row['username']] = row.get('remark') or row.get('nick_name') or row['username']
+        return result
+
     def paths(self, chat):
         table = 'Msg_' + hashlib.md5(chat.encode()).hexdigest()
         found = []
-        paths = sorted((self.root/'message').glob('message_*.db'))
+        # Only numbered message shards contain conversation tables. Resource
+        # databases can use different keys and must not block message syncing.
+        paths = sorted(p for p in (self.root/'message').glob('message_*.db')
+                       if p.stem.removeprefix('message_').isdigit())
         if not paths:
             raise RuntimeError('message_databases_missing')
         for path in paths:
@@ -90,12 +114,13 @@ class Reader:
                 clause = '' if after is None else f'WHERE local_id>{int(after.get(path.name, 0))}'
                 order = 'DESC' if after is None else 'ASC'
                 rows = db.query('SELECT local_id,server_id,local_type,create_time,real_sender_id,'
-                                'hex(message_content) AS body FROM "'+table+'" '+clause+
+                                'hex(message_content) AS body,hex(packed_info_data) AS packed FROM "'+table+'" '+clause+
                                 f' ORDER BY local_id {order} LIMIT {int(limit)}')
                 for row in rows:
                     sender = db.query('SELECT user_name FROM Name2Id WHERE rowid='+str(int(row['real_sender_id'])))
                     sender_id = sender[0]['user_name'] if len(sender) == 1 else None
                     raw = bytes.fromhex(row.pop('body'))
+                    packed = bytes.fromhex(row.pop('packed', None) or '')
                     row.update(database=path.name, sender_id=sender_id,
                                from_self=(sender_id == self_id) if sender_id is not None and self_id is not None else None)
                     row['text'] = None
@@ -109,6 +134,7 @@ class Reader:
                             body = body[len(sender_id)+2:]
                         row['text'] = body
                     else:
+                        row['media_fingerprint'] = hashlib.sha256(raw+packed).hexdigest()
                         row['omitted'] = 'non_text_message; XML/media credentials are not exported'
                     result.append(row)
         result.sort(key=lambda r:(int(r['create_time']), r['database'], int(r['local_id'])))

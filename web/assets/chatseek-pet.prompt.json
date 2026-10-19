@@ -1,0 +1,11 @@
+{
+  "asset": "web/assets/chatseek-pet.png",
+  "tool": "Built-in image_gen",
+  "purpose": "Transparent cutout of the selected green message-bubble mascot for ChatSeek",
+  "prompt": "Precise asset extraction edit. Remove ONLY the white background and gray floor shadow from this supplied green speech-bubble mascot image and return a clean transparent-background PNG cutout. Preserve the exact selected mascot: soft pale pistachio-green matte mochi body, wide flattened rounded message-box silhouette with gently dipped top, small integrated tail at LOWER RIGHT, two small glossy BLACK eyes, tiny black smile, original proportions, lighting and pleasant texture. Do not redesign, do not make it a round sphere, do not add white eyes, limbs, props, text or frame. Keep the complete original character including its tail and soft edge. The single character should fill 85–90% of output width with a small transparent margin on all sides. Background must be truly transparent, no white rectangle, no checkerboard pixels, no ground plane or cast shadow. Production web UI mascot asset, one character only.",
+  "body_generation": {
+    "asset": "web/assets/chatseek-pet-body.png",
+    "tool": "Built-in image_gen",
+    "prompt": "Precise localized asset edit for an animated web mascot. Remove ONLY the two black eyes and the tiny black mouth from the supplied transparent green speech-bubble character and seamlessly fill those three facial areas with the same soft green mochi surface shading. Return a FACELESS green message-bubble body on a truly transparent background. Preserve the exact existing silhouette, dimensions/aspect ratio, full green body, curved lower-right tail, matte grain texture, lighting and original framing, scale and position. Do not crop or move or redesign the body. No new eyes, no new mouth, no face, no limbs, no props. The empty face area must look naturally smooth with the same green shading, no patches or seams. Also remove isolated speckles or floor shadow BELOW the body silhouette while preserving the actual body edge. No black backdrop, white rectangle, checkerboard pixels, ground plane or cast shadow. This PNG is the body layer; interactive eyes and smile will be rendered separately in the browser."
+  }
+}

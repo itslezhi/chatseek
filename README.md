@@ -1,77 +1,123 @@
-# 微信聊天记忆助手
+# ChatSeek
 
-面向一个明确指定的微信好友：从 Mac 本地数据库只读同步文字消息，在本机检索相关聊天，再通过 DeepSeek 生成带原文引用的答案。
+在自己的 Mac 上检索微信聊天，用自己配置的大模型 API 问答和总结，并查看回答引用的原文。
 
-当前已在这台 Mac 验证：微信 4.1.15（270135）、macOS 26.4、Apple Silicon。初始化完成，目标好友保存在本机 `.private/target.json`。配置和聊天记录均被 Git 忽略。不要将 `.private` 或 `.env` 打包分享。
+聊天同步、关键词搜索、SQLite 存储和 BGE 向量计算在本机完成。AI 问答会将问题、聊天证据及必要历史问答发送到**你配置的模型 API**；完整范围总结可能发送所选范围全部已同步文字。默认不连接项目作者的服务器，不需要邀请码、网站或自建网关，API 费用由用户与模型服务商结算。
 
-## 使用
+> 当前是开发者预览版。微信读取流程面向 **Apple Silicon 原生 macOS**，开发环境验证记录为微信 4.1.15、macOS 26.4。跨机器首次接入仍需验证；Windows、Intel Mac 和其他微信版本尚未支持或验证。当前读取本机微信数据库，没有完整聊天历史文件导入器。
 
-在这个项目目录执行：
+## 功能
+
+- 按好友备注、昵称、群名或内部 ID 精确选择一个会话并只读同步，支持切换会话与独立索引。
+- 本地关键词搜索、512 维 BGE/FAISS 向量检索与可选混合检索。
+- 带原文引用的问答、连续追问、日期筛选和完整范围总结；范围过大时分批阅读。
+- 问答历史、新对话、归档、最近删除，以及图片/视频抽帧预览和可选视觉识别。
+- 浏览器界面、命令行和可选的 Mac `.app` 启动器。
+
+## 从源码启动
+
+需要 Apple Silicon Mac、Python 3.12、联网下载依赖及公共模型。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
 
 ```sh
-# 查看记录条数、最近同步时间、API 是否配置（不输出密钥）
-.venv/bin/python wechat_rag.py status
+git clone https://github.com/itslezhi/wechat-rag.git
+cd wechat-rag
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+.venv/bin/python wechat_rag.py web
+```
 
-# 启动后台同步，每五秒检查一次；已运行时会拒绝重复启动
-.venv/bin/python wechat_rag.py start --interval 5
+浏览器打开 <http://127.0.0.1:8765>，点击“模型与接入配置”，按以下顺序完成：
 
-# 本地检索并显示消息原文，不调用云端 API
-.venv/bin/python wechat_rag.py search '聚餐几点'
+1. **模型配置**：填写你自己的 API Base URL、文本模型 ID 和 API Key。也可直接编辑本机 `.env`。保存密钥后不会在网页回显。
+2. **账号选择**：先在原版微信登录一次，让本机存在账号和聊天数据库。选择检测到的账号。
+3. **微信读取初始化**：正常退出微信，阅读并勾选临时副本初始化说明，再点击初始化。程序会复制微信、重签临时副本，通过 LLDB 启动副本并验证数据库密钥，保存权限受限的本机文件。原版微信签名保持不变；如临时窗口要求登录，请按提示操作。
+4. 初始化结束后回到原版微信；如系统提示文件访问权限，请为实际启动程序的应用授权，并退出重启。源码启动时通常是终端；系统权限仍由 macOS 决定。
+5. 点击“下载 / 检查模型”，首次下载 `BAAI/bge-small-zh-v1.5` 公共模型约百 MB；聊天不会发给外部 embedding 服务。
+6. 关闭配置窗口，在左侧输入好友完整昵称、备注或群名，选择后同步并开始搜索或提问。
 
-# 配置密钥后进行问答
-.venv/bin/python wechat_rag.py ask '总结最近的聊天内容'
+初始化不会随网页打开自动执行，不需要 `sudo`，也不要求关闭 SIP。若已有初始化目录而流程失败，请保留目录并检查，不要直接覆盖密钥。不要将真实微信数据库、聊天、密钥、截图或配置文件附到 Issue。
 
-# 查看最近记录，包括表情包、图片等尚未识别的消息标记
+如果系统未安装命令行开发工具，可在终端执行 `xcode-select --install`，按 Apple 提示完成安装。源码运行不要求你购买 Apple Developer 会员；下载预先打包的 `.app` 则可能遇到系统的来源验证提示。
+
+## 配置自己的大模型
+
+使用兼容 **Chat Completions** 的服务，Base URL 可带 API 路径前缀；程序自动追加 `/chat/completions`，也接受粘贴完整端点地址。远程端点要求 HTTPS，本机 `127.0.0.1` / `localhost` 可用 HTTP。
+
+```dotenv
+LLM_API_KEY=填写自己的密钥
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-flash
+LLM_VISION_MODEL=
+LLM_CONTEXT_TOKENS=128000
+LLM_MAX_OUTPUT_TOKENS=8192
+LLM_JSON_MODE=true
+```
+
+- 对其他服务商，填写其控制台给出的 Base URL 和实际模型 ID。支持的能力取决于服务商，不承诺所有模型即填即用。
+- 文本模型需要能按指令输出有效 JSON 查询计划；默认发送 `response_format=json_object`。服务商不接受该参数时可将 `LLM_JSON_MODE=false`，模型仍须返回有效 JSON。
+- 模型应支持普通 Chat Completions 消息；网页版默认请求流式回答。原生 Anthropic Messages、Responses 等其他协议没有适配，需选择兼容端点。
+- 图片/视频画面识别需要在 `LLM_VISION_MODEL` 中明确配置支持 `image_url` 输入的模型。不填时媒体保留类型标记，不会把未识别内容当作已理解。语音尚不支持。
+- 本机兼容服务如果不校验 Key，可以填写 `local`；本文没有提供或安装本地回答模型。Embedding 模型与回答模型相互独立。
+- 旧版 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL` 等配置仍兼容，新的 `LLM_*` 配置优先。环境变量会覆盖同名文件配置；用网页保存后还需避免旧的环境变量覆盖新设置。
+
+普通问题通常包含规划与回答至少两次模型请求，媒体识别和分批总结还会增加调用。首次模型请求可能发生在本地检索之前，未找到证据也可能产生费用。程序没有为自带 Key 用户设置测试名额和次数。
+
+## 本地数据与隐私
+
+| 操作 | 内容去向 |
+|---|---|
+| 同步聊天、浏览历史、关键词搜索 | 本机 |
+| 建立向量索引 | 本机 CPU；首次需下载公共模型 |
+| 问题理解和追问规划 | 问题、最近最多 6 轮问答等发送至配置的模型端点 |
+| 具体问题回答 | 检索原文、相邻上下文、发送者信息和时间等发送至配置端点 |
+| 完整范围总结 | 该范围全部已同步非系统消息，必要时分批发送 |
+| 媒体识别 | 图片或视频抽样画面发送至配置的视觉模型端点 |
+
+当前没有自动脱敏，也不能逐次预览完整外发请求。使用前应确认你对相关记录有处理权限，并理解模型服务商对数据的处理方式。
+
+源码运行的数据在 `.private/`，个人模型配置可位于项目 `.env` 或 `.private/.env`；可通过 `CHATSEEK_DATA_DIR` 使用独立目录。`.app` 默认使用 `~/Library/Application Support/ChatSeek/`。本机保存聊天原文、问答、媒体描述、缓存和微信数据库密钥；目前使用普通 SQLite 和权限受限文件，**未作应用层加密**。
+
+“最近删除”只改变问答状态，不会清除原始聊天索引。源码版需要先停止网页、自动同步及模型进程，再自行管理数据目录；Mac 启动器菜单提供清除 ChatSeek 聊天索引、问答及媒体的入口，保留初始化密钥、模型及账号配置。所有操作均不删除原版微信数据库。
+
+网页只监听 `127.0.0.1`，不应将该网页服务直接暴露到公网。应用内“访问权限”确认不等于 macOS 系统权限。关闭浏览器不会自动停止源码后台；终端 Ctrl+C 停止网页服务，独立开启的自动同步可用下列 `stop` 命令停止。
+
+## 命令行
+
+```sh
+.venv/bin/python wechat_rag.py select '好友完整备注或群名'
 .venv/bin/python wechat_rag.py history --limit 30
-
-# 可选：输出全部证据，或保留原始 JSON 供其他程序读取
-.venv/bin/python wechat_rag.py ask '总结最近的聊天内容' --sources
-.venv/bin/python wechat_rag.py search '健身' --json
-
-# 停止本项目的后台同步
+.venv/bin/python wechat_rag.py search '会议'
+.venv/bin/python wechat_rag.py ask '总结最近的聊天内容'
+.venv/bin/python wechat_rag.py index
+.venv/bin/python wechat_rag.py start --interval 5
 .venv/bin/python wechat_rag.py stop
 ```
 
-后台同步在本机进程中运行。Mac 重启后需要重新执行 `start`；它没有被设置为系统开机启动项。同步日志只有计数和错误类型，不包含消息正文或密钥。
+同名联系人需要根据返回候选指定 `--id`。当前仅同步选中的一个会话，不能自动补齐手机上未迁移到电脑的记录。完整范围总结覆盖的是本机已同步记录，媒体标记不代表理解了图片、视频或语音。引用编号检查不能证明所有事实推理都正确，请查看原文核对。
 
-## DeepSeek 配置
+## 可选：构建 Mac 应用
 
-1. 在 <https://platform.deepseek.com/> 登录并创建 API Key。
-2. 在本机 `.env` 文件的 `DEEPSEEK_API_KEY=` 后填入密钥并保存。
-3. 执行上面的 `ask` 命令。
+```sh
+.venv/bin/python -m pip install -r requirements-build.txt
+.venv/bin/python scripts/build_macos.py
+```
 
-默认模型是官方文档当前列出的 `deepseek-flash`，可以在 `.env` 的 `DEEPSEEK_MODEL` 中调整。客户端固定调用 `https://api.deepseek.com/chat/completions`，每次问答只提交问题和检索到的相关文字片段；后台同步与本地搜索不调用模型。
+生成 `dist/ChatSeek.app` 和 ZIP。双击应用会启动本地后台并打开浏览器，Dock 中退出会管理后台进程。默认为临时本机签名，未完成 Developer ID 签名和 Apple 公证，也未承诺跨机首次接入成功。开发者证书就绪后可使用 `--identity` 和 `--notary-profile` 构建正式分发包。源码中没有附带私人配置、聊天、已初始化密钥或公共模型权重。
 
-API 文档：<https://api-docs.deepseek.com/>。没有密钥时可以完成本地同步和检索，但不能生成回答。`ask` 默认显示可读的总结及引用原文，不再把整个 JSON 直接输出到终端。后台同步只记录消息，调用 `ask` 时才生成总结。
-
-## 实现
-
-- 原始微信数据库：SQLCipher 只读连接，并读取已提交的 WAL 新消息。
-- 本地存储：SQLite。消息及分库同步进度在同一事务中提交；按来源库和消息 ID 去重。
-- 联系人隔离：索引绑定账号目录及唯一联系人 ID，同名联系人不会自动选择第一个。
-- 检索基线：中文双字词、英文词的 FTS5/BM25 检索；保留一小时内的相邻消息，帮助保留更正和上下文。总结请求选择最近的有限条文字记录。
-- 生成：将检索证据传入 DeepSeek，并检查回答中的引用编号是否对应提供的原文。编号有效不等于模型理解必然正确，界面或调用方应展示原文供核对。
-
-这版没有向量检索和网页界面。先把自动同步、检索与生成闭环跑通，再用实际问题评测是否需要增加 embedding 和 rerank。
-
-## 范围与限制
-
-- 只能读取电脑上已经存在的记录，不会自动补齐手机中未迁移到电脑的历史。
-- 当前只理解文字。总结和相邻上下文中会保留图片、语音、表情包等的类型标记；`history` 也展示系统消息。原图片、动态表情和音频尚未解码或展示，类型标记不代表已经理解其内容。搜索“表情包”“图片”等可按消息类型查找。
-- 持续同步新增消息，并重新检查最近 200 条记录的内容变化；尚未覆盖任意历史删除、所有撤回语义或数据库重建后的自动迁移。
-- 账号目录、数据库盐值变化或消息 ID 回退会中止本轮同步并记录错误，避免混入其他账号或跳过消息。
-- 新消息采集的底层能力已经在模拟加密 WAL 上验证；真实好友新增消息的实时验收需等该会话产生新消息。
-- 此程序没有微信消息发送功能。
+`beta_gateway/` 是可选的自托管补贴额度模块；公开版默认禁用，普通用户无需部署它。只有明确设置 `CHATSEEK_USE_BETA_GATEWAY=1` 并自行配置网关凭证时才启用旧网关路径；这与默认自带 Key 的使用方式分开。
 
 ## 开发与测试
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python vendor/wechat_local/sqlcipher_probe.py self-test
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests
+node tests/test_stream_transport.js
 ```
 
-这台 Mac 的 Python 没有默认 CA 文件时，安装命令可加 `--cert /etc/ssl/cert.pem`，继续正常验证 HTTPS 证书。
+测试使用合成聊天及模拟模型响应，不会初始化微信或调用真实付费模型。`scripts/check_threaded_rag.py` 和 `scripts/check_macos_bundle.py` 是额外的真实本地依赖/打包检查；公共模型未缓存时可能需要下载。无源码签名、无公网服务器即可开展开发者试用。
 
-`vendor/wechat_local` 来自 MIT 许可的本地读取工具，原始来源、版本及哈希见 `provenance.json`。本项目为 Python 3.12 调整了 Zstandard 解压，并从项目内的 `sqlcipher3` wheel 加载 SQLCipher。初始化只重新签名临时副本；原版微信签名已验证保持不变。日常同步复用本机已保存的密钥，不重复执行初始化。
+反馈问题时请遵守 [安全与隐私说明](SECURITY.md)，使用虚构材料复现。贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可与致谢
+
+项目采用 [MIT License](LICENSE)。`vendor/wechat_local/` 保留原有 MIT 许可证及 [来源记录](vendor/wechat_local/provenance.json)。BGE 模型、Python 依赖和其他第三方组件遵循各自许可证；微信为其权利人的产品，本项目与微信没有隶属或背书关系。

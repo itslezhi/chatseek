@@ -1,0 +1,17 @@
+[Unit]
+Description=Consistent ChatSeek quota ledger backup
+After=chatseek-gateway.service
+
+[Service]
+Type=oneshot
+User=chatseek
+Group=chatseek
+ExecStart=/usr/bin/python3 /opt/chatseek/backup.py
+StateDirectory=chatseek-backups
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/chatseek
