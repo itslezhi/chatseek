@@ -29,6 +29,11 @@ test('an existing connection uses a card and verification instead of disabled ch
   assert.equal(view.selected,true);assert.equal(view.verify,true);
   assert.equal(view.chooser,false);assert.equal(view.dropdown,false);assert.equal(view.initialize,false);
 });
+test('a verified account only needs the next step and does not offer another read check',()=>{
+  const view=accountView({state:'verified',detected_count:1,selected:{id:'saved'},can_change_account:false});
+  assert.equal(view.selected,true);assert.equal(view.verify,false);assert.equal(view.initialize,false);
+  assert.equal(canAdvance(1,{environment:true,wechat:true}),true);
+});
 test('a confirmed first-time account offers initialization and can be reselected',()=>{
   const connection={state:'initialize',detected_count:2,selected:{id:'saved'},can_change_account:true};
   assert.equal(accountView(connection).initialize,true);assert.equal(accountView(connection).change,true);

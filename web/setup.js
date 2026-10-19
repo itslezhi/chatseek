@@ -19,7 +19,7 @@
       chooser:state==='choose_account'&&connection.detected_count>0,
       dropdown:state==='choose_account'&&connection.detected_count>1,
       noData:state==='no_data',selected:!!connection.selected&&state!=='choose_account',
-      initialize:state==='initialize',verify:['initialized','saved_connection','verified'].includes(state),
+      initialize:state==='initialize',verify:['initialized','saved_connection'].includes(state),
       change:state==='initialize'&&connection.can_change_account,
       refresh:['no_data','choose_account'].includes(state)};
   }
@@ -120,7 +120,7 @@
     el('setup-bootstrap').disabled=busy||info.bootstrap.running||!info.account_ready||!el('setup-ack').checked;
     el('setup-check-wechat').hidden=!accountUI.verify;
     el('setup-check-wechat').disabled=busy||!info.keys_ready||info.bootstrap.running;
-    el('setup-check-wechat').textContent=ready().wechat?'重新检查读取':connection.state==='initialized'?'验证读取并核对账号':'验证已有接入';
+    el('setup-check-wechat').textContent=errors[1]?'重新检查读取':connection.state==='initialized'?'验证读取并核对账号':'验证已有接入';
     el('setup-account-help').textContent=connection.credentials_saved?'为避免不同账号的聊天和读取凭据混用，已接入的账号在这里保持固定。当前版本更换账号需使用独立的 ChatSeek 数据目录重新接入。':'首次接入前可以重新选择数据。已经开始但未完成的接入目录需要保留检查，不能直接覆盖。';
     el('setup-check-environment').disabled=busy;el('setup-save-key').disabled=busy;
     modal.querySelectorAll('[data-setup-step="2"] input').forEach(input=>input.disabled=busy);
