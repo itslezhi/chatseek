@@ -12,7 +12,7 @@ import hashlib
 from chatseek_beta_client import private_json
 
 _lock = threading.Lock()
-_job = {'running':False,'message':''}
+_job = {'running':False,'message':'','completed':False}
 _process = None
 _model_lock = threading.Lock()
 _model_job = {'running':False,'error':'','message':''}
@@ -91,6 +91,80 @@ def accounts():
     return sorted(p.resolve() for p in base.glob('*/db_storage') if p.is_dir())
 
 
+def _selected_account(private):
+    private=Path(private)
+    path=private/('target.json' if (private/'target.json').exists() else 'account.json')
+    try:
+        root=json.loads(path.read_text()).get('db_root')
+        return Path(root).expanduser().resolve() if isinstance(root,str) and root else None
+    except (OSError,ValueError,TypeError,AttributeError):
+        return None
+
+
+def _account_profile(private,signature):
+    try:
+        profile=json.loads((Path(private)/'account-profile.json').read_text())
+        if signature and profile.get('signature')==signature:
+            return profile
+    except (OSError,ValueError,AttributeError):
+        pass
+    return {}
+
+
+def connection_status(private,detected,verified):
+    """Describe saved data explicitly; discovery never means a logged-in account."""
+    private=Path(private);root=_selected_account(private)
+    keys=(private/'wechat-init/keys.json').is_file()
+    state_dir=(private/'wechat-init').exists()
+    signature=_wechat_signature(private)
+    profile=_account_profile(private,signature)
+    nickname=profile.get('nickname') if isinstance(profile.get('nickname'),str) else ''
+    detected=[Path(path).resolve() for path in detected]
+    choices=[{'id':str(path),'label':'微信数据 '+str(index+1)+' · 目录标识 …'+path.parent.name[-6:]}
+             for index,path in enumerate(detected)]
+    selected=None
+    if root is not None:
+        selected={'id':str(root),'label':nickname or ('上次接入的微信数据' if keys else '已选择的微信数据'),
+                  'nickname_verified':bool(nickname),'identifier':root.parent.name,
+                  'available':root.is_dir()}
+    problem=''
+    if _job['running']:
+        state='initializing'
+    elif root is None and (keys or (private/'target.json').exists() or (private/'account.json').exists()):
+        state='needs_attention';problem='发现以前保存的接入文件，但未能识别对应账号。请保留当前数据目录，使用新的独立目录重新接入。'
+    elif root is not None and not root.is_dir():
+        state='needs_attention';problem='上次选择的微信数据目录目前无法访问。请确认本机微信数据仍在，并检查文件访问权限。'
+    elif keys:
+        state='verified' if verified else 'initialized' if _job.get('completed') else 'saved_connection'
+    elif state_dir:
+        state='needs_attention';problem='上次首次接入尚未完成。请保留现有初始化目录并检查，不要直接覆盖；也可使用新的独立目录重试。'
+    elif root is not None:
+        state='initialize'
+    else:
+        state='choose_account' if choices else 'no_data'
+    if selected and not nickname:
+        if state in ('initializing','initialized'):selected['label']='本次接入的微信数据'
+        elif state=='verified':selected['label']='已验证的微信数据'
+    return {'state':state,'selected':selected,'choices':choices,'detected_count':len(choices),
+            'can_change_account':bool(root and not keys and not state_dir and not (private/'target.json').exists()),
+            'credentials_saved':keys,'problem':problem}
+
+
+def _read_account_profile(reader):
+    # account_id() confirms the directory-derived owner against the contact DB.
+    # No nickname lookup is attempted until the user asks to verify the connection.
+    owner=reader.account_id()
+    if not isinstance(owner,str) or not owner:
+        return {}
+    literal="CAST(x'"+owner.encode('utf-8').hex()+"' AS TEXT)"
+    with reader.open(reader.root/'contact/contact.db') as db:
+        rows=db.query('SELECT username,nick_name FROM contact WHERE username='+literal)
+    if len(rows)!=1 or rows[0].get('username')!=owner:
+        return {}
+    nickname=rows[0].get('nick_name')
+    return {'username':owner,'nickname':nickname.strip() if isinstance(nickname,str) else ''}
+
+
 def status(private):
     import wechat_rag as rag
     from chatseek_beta_client import settings
@@ -116,11 +190,13 @@ def status(private):
               'wechat':bool(wechat_signature and checked.get('wechat')==wechat_signature),
               'api':bool(config.get('DEEPSEEK_API_KEY') and checked.get('api')==_api_signature(config)),
               'model':model['ready']}
+    connection=connection_status(private,accounts(),verified['wechat'])
+    if connection['state']=='needs_attention':verified['wechat']=False
     return {'supported':platform.system()=='Darwin' and platform.machine()=='arm64',
             'gateway_url':defaults.get('gateway_url',''),
             'wechat_version':version,'tested_wechat_version':'4.1.15',
             'lldb_available':Path('/usr/bin/lldb').exists(),
-            'accounts':[{'id':str(p),'label':p.parent.name} for p in accounts()],
+            'accounts':connection['choices'],'wechat_connection':connection,
             'keys_ready':(private/'wechat-init/keys.json').exists(),
             'account_ready':selected or (private/'account.json').exists(),
             'contact_ready':selected,'api_configured':bool(config.get('DEEPSEEK_API_KEY')),
@@ -164,6 +240,14 @@ def check_wechat(private):
             db.query('SELECT count(*) FROM sqlite_master')
     except Exception:
         raise RuntimeError('微信数据库读取检查失败，请确认账号、密钥和文件访问权限。') from None
+    try:
+        profile=_read_account_profile(reader)
+        if profile:
+            private_json(Path(private)/'account-profile.json',{'signature':signature,**profile})
+    except Exception:
+        # Some WeChat versions omit the self contact. Read access can still pass;
+        # the UI must keep a neutral label instead of guessing an identity.
+        pass
     _remember(private,'wechat',signature)
     return {'verified':True}
 
@@ -186,11 +270,13 @@ def prepare_model(private):
 
 
 def choose_account(private, value):
+    if _job['running']:
+        raise RuntimeError('首次接入正在进行，请完成或退出当前流程后再选择。')
     if not isinstance(value,str) or Path(value).resolve() not in accounts():
         raise ValueError('请选择检测到的本机账号。')
     private = Path(private)
     if (private/'target.json').exists():
-        raise RuntimeError('已有会话配置；本内测版暂不支持切换微信账号。')
+        raise RuntimeError('这个数据目录已接入过微信账号；更换账号请使用独立的 ChatSeek 数据目录。')
     existing = private/'account.json'
     if existing.exists() and json.loads(existing.read_text())['db_root']!=value and (private/'wechat-init/keys.json').exists():
         raise RuntimeError('已有另一账号的密钥，请使用独立用户数据目录。')
@@ -217,7 +303,7 @@ def start_bootstrap(private, acknowledged):
         state = Path(private)/'wechat-init'
         if state.exists():
             raise RuntimeError('已有初始化目录；请退出应用后保留并检查该目录，再重试。')
-        _job = {'running':True,'message':'正在准备临时微信副本，请等待登录窗口…'}
+        _job = {'running':True,'message':'正在准备临时微信副本，请等待登录窗口…','completed':False}
 
     def run():
         global _job,_process
@@ -236,10 +322,10 @@ def start_bootstrap(private, acknowledged):
                         if event.get('type') in messages:_job['message']=messages[event['type']]
                     except ValueError:pass
                 code = proc.wait()
-            _job = {'running':False,'message':'初始化完成。请重新打开原版微信，再选择联系人。' if code==0 and (state/'keys.json').exists()
+            _job = {'running':False,'completed':code==0 and (state/'keys.json').exists(),'message':'初始化完成。请重新打开原版微信，再选择联系人。' if code==0 and (state/'keys.json').exists()
                     else '初始化未完成。请退出应用并检查初始化目录；勿删除原版微信数据。'}
         except Exception:
-            _job = {'running':False,'message':'初始化未完成，请确认已退出微信并安装命令行开发工具。'}
+            _job = {'running':False,'message':'初始化未完成，请确认已退出微信并安装命令行开发工具。','completed':False}
         finally:
             _process=None
     threading.Thread(target=run,daemon=True).start()
