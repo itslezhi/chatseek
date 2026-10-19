@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--notary-profile',help='Existing notarytool keychain profile')
     parser.add_argument('--skip-runtime',action='store_true',help='Reuse the already built runtime')
     parser.add_argument('--gateway-url',help='Public HTTPS beta gateway preset; never a secret key')
+    parser.add_argument('--embedding-model',type=Path,help='Verified local BGE snapshot to include in the app')
     args=parser.parse_args()
     if args.gateway_url:
         from urllib.parse import urlsplit
@@ -40,6 +41,17 @@ def main():
     mac.mkdir(parents=True);resources.mkdir()
     shutil.copytree(dist/'ChatSeekRuntime',resources/'runtime',symlinks=True)
     shutil.copytree(ROOT/'web',resources/'runtime/_internal/web',dirs_exist_ok=True)
+    model_dir=args.embedding_model or ROOT/'models/bge-small-zh-v1.5'
+    if model_dir.is_dir():
+        from build_offline_source import model_files
+        destination=resources/'runtime/_internal/models'
+        destination.mkdir(parents=True,exist_ok=True)
+        for name in ('README.md','FlagEmbedding-LICENSE','bge-small-zh-v1.5.manifest.json'):
+            shutil.copy2(ROOT/'models'/name,destination/name)
+        for name,path in model_files(model_dir):
+            target=destination/'bge-small-zh-v1.5'/name
+            target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,target)
     defaults=resources/'runtime/_internal/beta-defaults.json'
     defaults.write_text(json.dumps({'gateway_url':args.gateway_url or ''}))
     shutil.copy2(ROOT/'packaging/macos/内测使用说明.txt',resources/'内测使用说明.txt')

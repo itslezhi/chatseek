@@ -604,11 +604,11 @@ def read_model_stream(response, on_delta):
     raise RuntimeError('模型连接中断或回答不完整，本次未保存，请重试。')
 
 
-def model_completion(config, system, payload, *, json_mode=False, on_delta=None):
+def model_completion(config, system, payload, *, json_mode=False, on_delta=None, max_output_tokens=None, timeout=300):
     streaming = on_delta is not None and not json_mode
     config=normalized(config)
     body = {'model':config['DEEPSEEK_MODEL'],'stream':streaming,
-            **provider_options(config),'max_tokens':1200 if json_mode else int(config.get('DEEPSEEK_MAX_OUTPUT_TOKENS',8192)),
+            **provider_options(config),'max_tokens':max_output_tokens or (1200 if json_mode else int(config.get('DEEPSEEK_MAX_OUTPUT_TOKENS',8192))),
             'messages':[{'role':'system','content':system},
                         {'role':'user','content':json.dumps(payload,ensure_ascii=False)}]}
     if json_mode and str(config.get('LLM_JSON_MODE','true')).lower() not in ('false','0','no'):
@@ -618,7 +618,7 @@ def model_completion(config, system, payload, *, json_mode=False, on_delta=None)
                     headers={'Authorization':'Bearer '+config['DEEPSEEK_API_KEY'],'Content-Type':'application/json'})
     context = ssl.create_default_context(cafile='/etc/ssl/cert.pem' if Path('/etc/ssl/cert.pem').exists() else None)
     try:
-        with urllib.request.urlopen(request,context=context,timeout=300) as response:
+        with urllib.request.urlopen(request,context=context,timeout=timeout) as response:
             if streaming:
                 return read_model_stream(response, on_delta)
             data = json.load(response)

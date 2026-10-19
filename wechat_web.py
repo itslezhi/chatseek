@@ -281,22 +281,24 @@ class Handler(BaseHTTPRequestHandler):
             if action == 'ask' and data.get('stream') is True:
                 return self.stream_answer(data)
             if action.startswith('setup-'):
-                from chatseek_setup import choose_account,start_bootstrap,save_api
+                from chatseek_setup import choose_account,start_bootstrap,save_api,verify_api,check_environment,check_wechat,prepare_model
                 if action=='setup-account':
                     result = choose_account(rag.PRIVATE,data.get('account'))
                 elif action=='setup-bootstrap':
                     result = start_bootstrap(rag.PRIVATE,data.get('acknowledged'))
-                elif action=='setup-api':
+                elif action in ('setup-api','setup-verify-api'):
                     rag.PRIVATE.mkdir(mode=0o700,parents=True,exist_ok=True)
                     options={name:data[name] for name in ('base_url','model','vision_model','context_tokens','max_output_tokens','json_mode') if name in data}
-                    result = save_api(rag.PRIVATE,data.get('key'),**options)
+                    result = (verify_api if action=='setup-verify-api' else save_api)(rag.PRIVATE,data.get('key'),**options)
+                elif action=='setup-check-environment':
+                    result = check_environment(rag.PRIVATE)
+                elif action=='setup-check-wechat':
+                    result = check_wechat(rag.PRIVATE)
                 elif action=='setup-activate':
                     from chatseek_beta_client import activate
                     result = activate(rag.PRIVATE,data.get('url'),data.get('code'))
                 elif action=='setup-model':
-                    from wechat_embedding_client import request
-                    request(rag.PRIVATE,{'action':'tokens','text':'模型检查'})
-                    result = {'ready':True}
+                    result = prepare_model(rag.PRIVATE)
                 else:
                     return self.send(404,{'error':'接口不存在。'})
             elif action == 'access':

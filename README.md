@@ -16,7 +16,9 @@
 
 ## 从源码启动
 
-需要 Apple Silicon Mac、Python 3.12、联网下载依赖及公共模型。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
+需要 Apple Silicon Mac、Python 3.12、联网安装依赖。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
+
+希望省去单独下载向量模型，可在 [GitHub Releases](https://github.com/itslezhi/chatseek/releases/latest) 下载 **ChatSeek-source-with-model.zip**，解压后进入 ChatSeek 目录，再从下面的创建虚拟环境步骤开始。这个包包含公共模型，仍需联网安装 Python 依赖；普通 Git 克隆不包含模型权重。
 
 ```sh
 git clone https://github.com/itslezhi/chatseek.git
@@ -27,14 +29,14 @@ cp .env.example .env
 .venv/bin/python wechat_rag.py web
 ```
 
-浏览器打开 <http://127.0.0.1:8765>，点击“模型与接入配置”，按以下顺序完成：
+浏览器打开 <http://127.0.0.1:8765>，进入逐步配置向导。每次只显示当前步骤，检查通过后才能点击“下一步”：
 
-1. **模型配置**：填写你自己的 API Base URL、文本模型 ID 和 API Key。也可直接编辑本机 `.env`。保存密钥后不会在网页回显。
-2. **账号选择**：先在原版微信登录一次，让本机存在账号和聊天数据库。选择检测到的账号。
-3. **微信读取初始化**：正常退出微信，阅读并勾选临时副本初始化说明，再点击初始化。程序会复制微信、重签临时副本，通过 LLDB 启动副本并验证数据库密钥，保存权限受限的本机文件。原版微信签名保持不变；如临时窗口要求登录，请按提示操作。
-4. 初始化结束后回到原版微信；如系统提示文件访问权限，请为实际启动程序的应用授权，并退出重启。源码启动时通常是终端；系统权限仍由 macOS 决定。
-5. 点击“下载 / 检查模型”，首次下载 `BAAI/bge-small-zh-v1.5` 公共模型约百 MB；聊天不会发给外部 embedding 服务。
-6. 关闭配置窗口，在左侧输入好友完整昵称、备注或群名，选择后同步并开始搜索或提问。
+1. **运行环境**：检查 Apple Silicon、macOS、微信和 LLDB 是否就绪。
+2. **微信接入**：先在原版微信登录一次，选择检测到的账号。正常退出微信，阅读并勾选初始化说明，再获取密钥；初始化会复制微信、重签临时副本并通过 LLDB 启动，原版签名保持不变。已有密钥时直接检查数据库只读访问，不重复初始化。如需系统权限，源码启动时通常为终端授权，按提示重启。
+3. **模型 API**：填写通用的 **Base URL / Model Name / API Key**，点击“验证并保存”。验证只发送一条不含聊天的简短 JSON 测试请求，服务商可能计费；失败时保留原有配置。已有 Key 可以留空沿用，页面不会回显密钥。
+4. **本地检索**：含模型包会自动检查随包模型，已有缓存直接复用；普通源码缺失模型时下载一次。准备在后台进行，结果显示在本步骤内，不会出现在“选择会话”后方。
+
+完成向导后，在左侧输入好友完整昵称、备注或群名，选择并同步会话。初始化结束后请回到原版微信。
 
 初始化不会随网页打开自动执行，不需要 `sudo`，也不要求关闭 SIP。若已有初始化目录而流程失败，请保留目录并检查，不要直接覆盖密钥。不要将真实微信数据库、聊天、密钥、截图或配置文件附到 Issue。
 
@@ -46,8 +48,8 @@ cp .env.example .env
 
 ```dotenv
 LLM_API_KEY=填写自己的密钥
-LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-flash
+LLM_BASE_URL=https://your-provider.example/v1
+LLM_MODEL=your-model-name
 LLM_VISION_MODEL=
 LLM_CONTEXT_TOKENS=128000
 LLM_MAX_OUTPUT_TOKENS=8192
@@ -103,7 +105,9 @@ LLM_JSON_MODE=true
 .venv/bin/python scripts/build_macos.py
 ```
 
-生成 `dist/ChatSeek.app` 和 ZIP。双击应用会启动本地后台并打开浏览器，Dock 中退出会管理后台进程。默认为临时本机签名，未完成 Developer ID 签名和 Apple 公证，也未承诺跨机首次接入成功。开发者证书就绪后可使用 `--identity` 和 `--notary-profile` 构建正式分发包。源码中没有附带私人配置、聊天、已初始化密钥或公共模型权重。
+生成 `dist/ChatSeek.app` 和 ZIP。双击应用会启动本地后台并打开浏览器，Dock 中退出会管理后台进程。默认为临时本机签名，未完成 Developer ID 签名和 Apple 公证，也未承诺跨机首次接入成功。开发者证书就绪后可使用 `--identity` 和 `--notary-profile` 构建正式分发包。
+
+可用 `--embedding-model /完整模型目录` 将经过校验的公共向量模型装入 App，首次运行无需单独下载。含模型源码包的构建方法和模型许可见 [models/README.md](models/README.md)。所有发行包均排除私人配置、聊天和微信密钥。
 
 `beta_gateway/` 是可选的自托管补贴额度模块；公开版默认禁用，普通用户无需部署它。只有明确设置 `CHATSEEK_USE_BETA_GATEWAY=1` 并自行配置网关凭证时才启用旧网关路径；这与默认自带 Key 的使用方式分开。
 
@@ -112,6 +116,7 @@ LLM_JSON_MODE=true
 ```sh
 .venv/bin/python -m unittest discover -s tests
 node tests/test_stream_transport.js
+node tests/test_setup_flow.js
 ```
 
 测试使用合成聊天及模拟模型响应，不会初始化微信或调用真实付费模型。`scripts/check_threaded_rag.py` 和 `scripts/check_macos_bundle.py` 是额外的真实本地依赖/打包检查；公共模型未缓存时可能需要下载。无源码签名、无公网服务器即可开展开发者试用。

@@ -20,4 +20,6 @@ jobs:
       - name: Run synthetic Python tests
         run: python -m unittest discover -s tests
       - name: Run stream transport tests
-        run: node tests/test_stream_transport.js
+        run: |
+          node tests/test_stream_transport.js
+          node tests/test_setup_flow.js

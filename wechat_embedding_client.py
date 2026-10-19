@@ -16,6 +16,15 @@ _lock=threading.RLock()
 _process=None
 _buffer=b''
 _stopping=threading.Event()
+_ready=False
+_cache_path=None
+
+
+def worker_ready(private):
+    # Do not acquire the request lock: a cold download can hold it for minutes.
+    process=_process
+    return bool(_ready and process is not None and process.poll() is None
+                and _cache_path==str(Path(private).resolve()/'models'))
 
 
 def shutdown_worker():
@@ -25,9 +34,10 @@ def shutdown_worker():
 
 
 def close_worker():
-    global _process,_buffer
+    global _process,_buffer,_ready,_cache_path
     with _lock:
         process=_process;_process=None;_buffer=b''
+        _ready=False;_cache_path=None
         if process is None:return
         for stream in (process.stdin,process.stdout):
             if stream:
@@ -63,7 +73,7 @@ def _read(process,timeout):
 
 
 def _start(private):
-    global _process,_buffer
+    global _process,_buffer,_ready,_cache_path
     if _process is not None and _process.poll() is None:return _process
     close_worker()
     env=os.environ.copy()
@@ -77,6 +87,7 @@ def _start(private):
                               stderr=subprocess.DEVNULL,env=env,bufsize=0)
     _buffer=b''
     if _read(_process,300).get('ready') is not True:raise ValueError()
+    _cache_path=str(Path(private).resolve()/'models');_ready=True
     return _process
 
 

@@ -18,14 +18,20 @@ def main():
         os.environ[name]='1'
     os.environ['TOKENIZERS_PARALLELISM']='false'
     from wechat_vectors import MODEL,QUERY_PREFIX
+    from chatseek_models import locate,REVISION
     import torch
     from sentence_transformers import SentenceTransformer
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     options={'cache_folder':sys.argv[1],'device':'cpu','trust_remote_code':False}
+    location=locate(Path(sys.argv[1]).parent)
     with contextlib.redirect_stdout(sys.stderr):
-        try:model=SentenceTransformer(MODEL,local_files_only=True,**options)
-        except (OSError,ValueError):model=SentenceTransformer(MODEL,**options)
+        if location['available']:
+            model=SentenceTransformer(str(location['path']),local_files_only=True,**options)
+        elif location['source']=='configured':
+            raise RuntimeError('Configured embedding directory is incomplete')
+        else:
+            model=SentenceTransformer(MODEL,revision=REVISION,**options)
     model.max_seq_length=512
     print(json.dumps({'ready':True,'pid':os.getpid()}),flush=True)
     for line in sys.stdin.buffer:
