@@ -1,3 +1,4 @@
+import os
 from legacy_support import isolate
 import http.client
 import contextlib
@@ -122,7 +123,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status,200)
         self.assertEqual(json.loads(body),{'mode':'full','system_permission':'manual'})
         config=web.rag.PRIVATE/'web-access.json'
-        self.assertEqual(config.stat().st_mode & 0o777,0o600)
+        if os.name != 'nt':self.assertEqual(config.stat().st_mode & 0o777,0o600)
         self.assertEqual(json.loads(self.request('GET','/api/access')[1])['mode'],'full')
         with patch.object(web,'query',return_value={'answer':'test'}) as query:
             self.assertEqual(self.request('POST','/api/ask',{'question':'test'},headers)[0],200)

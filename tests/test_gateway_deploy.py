@@ -24,7 +24,7 @@ class GatewayDeploymentTests(unittest.TestCase):
             source.unlink()
             with sqlite3.connect(copy) as restored:
                 self.assertEqual(restored.execute('SELECT used FROM quota').fetchone()[0], 12)
-            self.assertEqual(os.stat(copy).st_mode & 0o777, 0o600)
+            if os.name != 'nt':self.assertEqual(os.stat(copy).st_mode & 0o777, 0o600)
 
     def test_retention_preserves_unrelated_files(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -15,6 +15,7 @@ import re
 import shutil
 import tempfile
 import time
+import sys
 
 
 def library():
@@ -48,6 +49,20 @@ class DB:
     def __init__(self, path, key, *, fixture_write=False):
         if not re.fullmatch(r'[0-9a-fA-F]{64}', key):
             raise ValueError('expected 64 hex characters for raw SQLCipher key')
+        self.connection = None
+        if sys.platform == 'win32':
+            # Windows wheels do not promise exported sqlite3_* symbols in their .pyd.
+            from sqlcipher3 import dbapi2
+            uri = Path(path).resolve().as_uri() + ('?mode=rwc' if fixture_write else '?mode=ro')
+            self.connection = dbapi2.connect(uri, uri=True, timeout=2, isolation_level=None)
+            try:
+                self.query("PRAGMA key=\"x'" + key + "'\";")
+                self.query('PRAGMA cipher_compatibility=4;')
+                if not fixture_write:self.query('PRAGMA query_only=ON;')
+                self.query('SELECT count(*) FROM sqlite_master;')
+            except BaseException:
+                self.close();raise
+            return
         self.lib = library()
         self.ptr = C.c_void_p()
         flags = 6 if fixture_write else 1  # READWRITE|CREATE, or READONLY
@@ -70,6 +85,24 @@ class DB:
             raise
 
     def query(self, sql):
+        if self.connection is not None:
+            from sqlcipher3 import dbapi2
+            rows = []
+            # Existing callers use SQL scripts. complete_statement handles quoted semicolons.
+            statement = ''
+            try:
+                for char in sql + ';':
+                    statement += char
+                    if char == ';' and dbapi2.complete_statement(statement):
+                        cursor = self.connection.execute(statement)
+                        if cursor.description:
+                            names = [column[0] for column in cursor.description]
+                            rows.extend({name: str(value) if value is not None else None
+                                         for name, value in zip(names, row)} for row in cursor)
+                        statement = ''
+                return rows
+            except dbapi2.Error:
+                raise RuntimeError('SQLCipher query failed; check the key and database compatibility') from None
         rows = []
         callback_type = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_int,
                                    C.POINTER(C.c_char_p), C.POINTER(C.c_char_p))
@@ -85,7 +118,10 @@ class DB:
         return rows
 
     def close(self):
-        if self.ptr:
+        if self.connection is not None:
+            self.connection.close();self.connection=None
+            return
+        if getattr(self, 'ptr', None):
             self.lib.sqlite3_close(self.ptr)
             self.ptr = C.c_void_p()
 
@@ -98,9 +134,9 @@ class DB:
 
 def load_key(path, db_path):
     p = Path(path)
-    if p.stat().st_mode & 0o077:
+    if os.name != 'nt' and p.stat().st_mode & 0o077:
         raise RuntimeError('key file must be private (chmod 600)')
-    data = json.loads(p.read_text())
+    data = json.loads(p.read_text(encoding='utf-8'))
     if isinstance(data, dict) and isinstance(data.get('keys'), dict):
         data = data['keys']
     if not isinstance(data, dict):
@@ -111,8 +147,8 @@ def load_key(path, db_path):
     entries = []
     for name, value in data.items():
         normalized = name.replace('\\', '/')
-        absolute_match = normalized.startswith('/') and Path(normalized).resolve() == target
-        if normalized == salt or str(target).endswith('/' + normalized) or absolute_match:
+        absolute_match = Path(normalized).is_absolute() and Path(normalized).resolve() == target
+        if normalized == salt or target.as_posix().lower().endswith('/' + normalized.lower()) or absolute_match:
             if isinstance(value, dict):
                 value = value.get('enc_key', value.get('key'))
             if isinstance(value, str) and re.fullmatch('[0-9a-fA-F]{64}', value):
@@ -193,7 +229,7 @@ def self_test():
                 raise AssertionError('wrong key was accepted')
             key_file = root/'keys.json'
             fd = os.open(key_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
-            with os.fdopen(fd,'w') as f:
+            with os.fdopen(fd,'w',encoding='utf-8') as f:
                 json.dump({str(db_path): {'enc_key': key}},f)
             assert verify(db_path, key_file)['verified']
             checks.append('private_key_manifest_verified')

@@ -6,7 +6,7 @@ filtered searches build an exact index from eligible cached vectors before top-k
 from __future__ import annotations
 import contextlib
 import datetime as dt
-import fcntl
+import chatseek_platform as fcntl
 import hashlib
 import json
 import os

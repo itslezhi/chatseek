@@ -24,10 +24,10 @@ class DesktopSetupTests(unittest.TestCase):
             setup.save_api(private,'personal-test-key')
             self.assertEqual(rag.env_config()['DEEPSEEK_API_KEY'],'personal-test-key')
             self.assertNotIn('token',settings(private))
-            self.assertEqual((private/'.env').stat().st_mode&0o777,0o600)
+            if os.name != 'nt':self.assertEqual((private/'.env').stat().st_mode&0o777,0o600)
     def test_account_selection_and_explicit_bootstrap_ack(self):
-        with tempfile.TemporaryDirectory() as folder,patch.object(setup,'accounts',return_value=[Path('/test/db_storage')]),patch.object(setup,'status',return_value={}):
-            setup.choose_account(Path(folder),'/test/db_storage')
-            self.assertEqual(json.loads((Path(folder)/'account.json').read_text())['db_root'],'/test/db_storage')
+        with tempfile.TemporaryDirectory() as folder,patch.object(setup.sys,'platform','darwin'),patch.object(setup,'accounts',return_value=[Path('/test/db_storage').resolve()]),patch.object(setup,'status',return_value={}):
+            setup.choose_account(Path(folder),str(Path('/test/db_storage').resolve()))
+            self.assertEqual(json.loads((Path(folder)/'account.json').read_text())['db_root'],str(Path('/test/db_storage').resolve()))
             with self.assertRaises(ValueError):setup.choose_account(folder,'/another/account')
             with self.assertRaises(ValueError):setup.start_bootstrap(folder,False)
