@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ChatSeek WeChat memory",
+    "description": "Connect to local ChatSeek to select, search, synchronize and export readable chat history to local files. Start ChatSeek and complete WeChat setup first. Access confirmation remains in ChatSeek. Retrieved messages enter the Harness session and its configured model.",
+    "detail": "integrations/deepseek-harness/README.md"
+  }
+}

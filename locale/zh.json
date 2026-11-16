@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ChatSeek 微信记忆",
+    "description": "连接本机 ChatSeek，选择好友、检索聊天、持续同步并将全部可读取历史导出为本地文件。需先启动 ChatSeek 并完成微信接入；访问确认仍在 ChatSeek 中完成。检索结果会进入 Harness 会话及其配置的模型。",
+    "detail": "integrations/deepseek-harness/README.md"
+  }
+}

@@ -37,6 +37,18 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -X utf8 chatseek_desktop.py
 ```
 
+## 安装到 DeepSeek Harness
+
+在 Harness 的 **Plugins → Add plugin** 输入 `github:itslezhi/chatseek`，或执行：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web add github:itslezhi/chatseek
+```
+
+提供聊天状态、选人、历史、搜索、单次同步、持续同步和完整历史导出 7 个工具。需先在同一台电脑启动 ChatSeek 并完成微信接入；插件不会自动初始化微信。需要 Harness 0.2.2-rc.1+（0.2.x）及 Node.js 24.9+。访问确认仍由 ChatSeek 控制，检索出的消息会进入 Harness 会话及其配置的模型。完整导出保存在本地文件中。
+
+详细安装、权限、导出位置和配置见 [DeepSeek Harness 插件说明](integrations/deepseek-harness/README.md)。
+
 ## 导出一个人的全部历史
 
 先选择该好友，进入“聊天记录”，选择 HTML、TXT 或 JSON，点击“导出全部历史”。导出前会继续同步到导出开始时的消息进度，超过单次同步批次上限也会接着读取；失败不会生成声称完整的文件。导出不调用模型，包含完整长文字、发送者、北京时间及非文字消息类型标记。导出的是本机能够读取的历史，无法补齐手机独有、已删除或尚未迁移的消息；本功能不打包媒体文件。HTML 会转义聊天中的标签和脚本，JSON 适合后续处理。
