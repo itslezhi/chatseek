@@ -29,3 +29,5 @@ reports/
 *.log
 # Public model weights belong in release archives, not Git history.
 models/bge-small-zh-v1.5/
+node_modules/
+*.tgz
