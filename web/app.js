@@ -52,7 +52,7 @@ async function authorizeAccess(action,data){
 function renderAccessMode(){
   $('access-mode').value=accessMode;
   $('access-help-button').textContent=accessMode==='full'?'系统授权设置':'权限说明';
-  $('access-mode').title=accessMode==='full'?'跳过应用内确认；macOS 系统权限仍需手动授权':'提问或访问原始聊天、媒体前，先确认本次访问';
+  $('access-mode').title=accessMode==='full'?'跳过应用内确认；系统权限仍需手动授权':'提问或访问原始聊天、媒体前，先确认本次访问';
 }
 function confirmAccess(action){
   const messages={
@@ -74,7 +74,14 @@ function confirmAccess(action){
     dialog.showModal();
   });
 }
-accessReady=api('access').then(result=>{accessMode=result.mode;renderAccessMode();}).catch(error=>{
+accessReady=api('access').then(result=>{
+  accessMode=result.mode;renderAccessMode();
+  if(result.platform==='win32'){
+    $('mac-access-guide').hidden=true;
+    const guide=document.createElement('p');guide.textContent='Windows：请让微信与 ChatSeek 使用同一用户和权限级别，并允许访问所选微信数据目录。首次接入时保持微信登录。';
+    $('access-help').append(guide);
+  }
+}).catch(error=>{
   accessMode='ask';renderAccessMode();notice('权限设置读取失败，已按询问请求处理：'+error.message);
 });
 $('access-mode').addEventListener('change',async()=>{
@@ -91,7 +98,7 @@ $('access-mode').addEventListener('change',async()=>{
 $('access-help-button').addEventListener('click',()=>$('access-help').showModal());
 $('open-system-access').addEventListener('click',async()=>{
   const button=$('open-system-access');button.disabled=true;
-  try{await api('access-settings',{});$('access-settings-status').textContent='已打开系统设置。请手动授权，再退出并重新启动获得授权的应用和网页服务。';}
+  try{const result=await api('access-settings',{});$('access-settings-status').textContent=result.message||'已打开系统设置。请手动授权，再退出并重新启动获得授权的应用和网页服务。';}
   catch(error){$('access-settings-status').textContent=error.message;}
   finally{button.disabled=false;}
 });

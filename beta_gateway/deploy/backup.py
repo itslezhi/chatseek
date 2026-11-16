@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Consistent local SQLite backup, including committed WAL transactions."""
 import argparse
+from contextlib import closing
 import datetime as dt
 import os
 from pathlib import Path
@@ -20,8 +21,8 @@ def backup(source, directory, keep=14):
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(descriptor)
-        with sqlite3.connect(source.as_uri() + '?mode=ro', uri=True) as original:
-            with sqlite3.connect(temporary) as copy:
+        with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as original:
+            with closing(sqlite3.connect(temporary)) as copy:
                 original.backup(copy)
                 if copy.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                     raise RuntimeError('backup integrity check failed')

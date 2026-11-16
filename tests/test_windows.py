@@ -78,3 +78,17 @@ class WindowsTests(unittest.TestCase):
             self.assertFalse(platform.terminate_watcher(child.pid,[sys.executable,'wrong-script','watch']))
             self.assertIsNone(child.poll())
         finally:child.terminate();child.wait(timeout=5)
+
+    @unittest.skipUnless(sys.platform=='win32', 'Native Win32 API smoke test')
+    def test_native_memory_reader_finds_only_synthetic_child_marker(self):
+        from contextlib import closing
+        import time
+        marker=b'CHATSEEK-SYNTHETIC-MEMORY-PROBE-123456789'
+        code="import ctypes,time;buffer=ctypes.create_string_buffer(b'CHATSEEK-SYNTHETIC-MEMORY-PROBE-123456789');print('ready',flush=True);time.sleep(30)"
+        child=subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.PIPE)
+        try:
+            self.assertEqual(child.stdout.readline().strip(),b'ready')
+            with closing(windows.memory_chunks(child.pid,threading.Event(),time.monotonic()+10)) as chunks:
+                self.assertTrue(any(marker in chunk for chunk in chunks))
+        finally:
+            child.terminate();child.wait(timeout=5);child.stdout.close()

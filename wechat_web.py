@@ -27,7 +27,7 @@ def access_settings():
         mode = json.loads((rag.PRIVATE/'web-access.json').read_text(encoding='utf-8')).get('mode')
     except (OSError, ValueError, AttributeError):
         mode = 'ask'
-    return {'mode':mode if mode in ('ask','full') else 'ask', 'system_permission':'manual'}
+    return {'mode':mode if mode in ('ask','full') else 'ask', 'system_permission':'manual','platform':sys.platform}
 
 
 def set_access_mode(mode):
