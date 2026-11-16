@@ -8,6 +8,7 @@ import sys
 
 def main():
     os.umask(0o077)
+    from chatseek_platform import desktop_data_dir
     if '--chatseek-self-test' in sys.argv:
         import wechat_rag  # registers bundled/source vendor module location
         import json
@@ -41,12 +42,12 @@ def main():
         sys.argv[1]='watch'
         from wechat_rag import main as cli
         return cli()
-    private=Path(os.environ.get('CHATSEEK_DATA_DIR',str(Path.home()/'Library/Application Support/ChatSeek'))).expanduser().resolve()
+    private=Path(os.environ.get('CHATSEEK_DATA_DIR',str(desktop_data_dir()))).expanduser().resolve()
     os.environ['CHATSEEK_DATA_DIR']=str(private)
     private.mkdir(mode=0o700,parents=True,exist_ok=True)
     os.chmod(private,0o700)
     # Retain this descriptor for the life of the service.
-    import fcntl
+    import chatseek_platform as fcntl
     with (private/'desktop.lock').open('a') as handle:
         try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:

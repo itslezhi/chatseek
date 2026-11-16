@@ -36,11 +36,12 @@
     '<section data-setup-step="1" hidden><h2>接入你的微信</h2><p id="setup-account-intro"></p><span id="setup-account-badge" class="setup-account-badge"></span>',
     '<div id="setup-account-empty" class="setup-account-empty" hidden><strong>还没有发现本机微信数据</strong><p>先打开原版微信并登录你要使用的账号，然后点击“刷新账号列表”。安装包不包含微信读取凭据，首次接入会在这台电脑单独生成。</p></div>',
     '<div id="setup-account-chooser" hidden><p id="setup-account-discovery"></p><label id="setup-account-label">选择要使用的微信数据<select id="setup-account"></select></label><p id="setup-account-choice-help" class="setup-muted"></p><button id="setup-save-account" type="button" class="setup-primary">使用这份微信数据</button></div>',
+    '<div id="setup-windows-root" hidden><label>微信数据目录（db_storage）<input id="setup-custom-root" placeholder="D:/WeChat/xwechat_files/账号/db_storage"></label><button id="setup-use-root" type="button">使用此目录</button></div>',
     '<button id="setup-refresh-accounts" type="button" class="setup-secondary">刷新账号列表</button>',
     '<div id="setup-saved-account" class="setup-account-card" hidden><small id="setup-account-caption"></small><strong id="setup-account-name"></strong><p id="setup-account-note"></p><details class="setup-details"><summary>查看数据目录标识</summary><p id="setup-account-identifier" class="setup-muted"></p><p class="setup-muted">这个标识来自本机数据目录，不是微信昵称或手机号。</p></details><button id="setup-change-account" type="button" class="setup-secondary" hidden>重新选择数据</button></div>',
     '<div id="setup-first-connect" hidden>',
-    '<details id="setup-bootstrap-guide" class="setup-details"><summary>首次初始化说明</summary><p>先在原版微信登录一次，再正常退出微信。初始化会复制微信、重签临时副本并通过 LLDB 启动，验证密钥后保存到本机。原版微信签名保持不变；如临时窗口要求登录，请按提示操作。</p></details>',
-    '<label id="setup-ack-label"><input id="setup-ack" type="checkbox">我已正常退出微信，理解并同意临时副本和调试初始化流程。</label>',
+    '<details id="setup-bootstrap-guide" class="setup-details"><summary>首次初始化说明</summary><p id="setup-bootstrap-description">先在原版微信登录一次，再正常退出微信。初始化会复制微信、重签临时副本并通过 LLDB 启动，验证密钥后保存到本机。原版微信签名保持不变；如临时窗口要求登录，请按提示操作。</p></details>',
+    '<label id="setup-ack-label"><input id="setup-ack" type="checkbox"><span id="setup-ack-text">我已正常退出微信，理解并同意临时副本和调试初始化流程。</span></label>',
     '<button id="setup-bootstrap" type="button" class="setup-primary">开始首次接入</button><p class="setup-muted">首次接入生成的读取凭据只保存在这台电脑。换电脑后通常需要重新接入。</p></div>',
     '<button id="setup-check-wechat" type="button" class="setup-primary" hidden>验证已有接入</button><p id="setup-status-1" class="setup-status" role="status"></p>',
     '<details class="setup-details"><summary>账号不对或无法读取？</summary><p id="setup-account-help"></p><p>账号列表来自这台电脑保存过的微信数据，不代表微信当前的登录状态。没有发现数据或读取失败时，请先确认原版微信已登录，并检查文件访问权限。</p><button id="setup-permission" type="button" class="setup-secondary">打开系统权限设置</button></details></section>',
@@ -69,6 +70,14 @@
   function feedback(step,message,error=false){messages[step]=message;errors[step]=error;render();}
   function render(){
     if(!info)return;
+    const windows=info.platform==='win32';
+    el('setup-windows-root').hidden=!windows||info.wechat_connection.credentials_saved;
+    el('setup-permission').hidden=windows;
+    if(document.getElementById('mac-access-guide'))document.getElementById('mac-access-guide').hidden=windows;
+    if(windows){
+      el('setup-bootstrap-description').textContent='保持 Windows 微信 4.x 登录，并打开要同步的会话。仅在点击接入后，只读扫描当前用户的微信进程，验证所选数据库的读取密钥并保存到本机；不注入代码、不修改微信文件。无法验证时不会保存不完整凭据。';
+      el('setup-ack-text').textContent='微信已登录所选账号，我同意只读检查本机微信进程并保存已验证的读取凭据。';
+    }
     const connection=info.wechat_connection,accountUI=accountView(connection,choosingAccount);
     modal.querySelectorAll('[data-setup-step]').forEach((section,index)=>section.hidden=index!==current);
     el('setup-complete').hidden=current!==4;el('setup-navigation').hidden=current===4;
@@ -80,7 +89,7 @@
     el('setup-next').textContent=current===3?'完成设置':'下一步';
     const defaults=[
       ready().environment?'运行环境检查通过，可以继续。':'检查通过后，才能继续接入微信。',
-      ready().wechat?(connection.selected?.nickname_verified?'读取检查通过，已从本机联系人信息核对账号昵称。':'读取检查通过；暂未获取到昵称，请在原版微信确认账号。'):info.bootstrap.running?info.bootstrap.message:connection.state==='initialized'?'首次接入已完成，请点击“验证读取并核对账号”。':connection.state==='saved_connection'?'点击“验证已有接入”确认仍可读取，不会重新获取凭据。':connection.state==='initialize'?'尚未进行首次接入，请按上面的说明继续。':connection.state==='needs_attention'?connection.problem:connection.state==='no_data'?'刷新只会检查本机数据，不会自动开始接入。':'尚未确认要使用的微信数据，请先确认。',
+      ready().wechat?(connection.selected?.nickname_verified?'读取检查通过，已从本机联系人信息核对账号昵称。':'读取检查通过；暂未获取到昵称，请在原版微信确认账号。'):info.bootstrap.running?info.bootstrap.message:connection.state==='initialized'?'首次接入已完成，请点击“验证读取并核对账号”。':connection.state==='saved_connection'?'点击“验证已有接入”确认仍可读取，不会重新获取凭据。':connection.state==='initialize'?(info.bootstrap.message||'尚未进行首次接入，请按上面的说明继续。'):connection.state==='needs_attention'?connection.problem:connection.state==='no_data'?'刷新只会检查本机数据，不会自动开始接入。':'尚未确认要使用的微信数据，请先确认。',
       apiDirty?'配置已修改，请重新验证。':ready().api?'API 连接与 JSON 回复检查通过。':info.api_configured?'已保存模型配置，请验证后继续。':'填写三项配置，再验证连接。',
       info.local_model.error||(ready().model?'本地向量模型已就绪。':info.local_model.running?info.local_model.message:info.local_model.available?'已检测到本地模型，正在准备检查。':'模型仅首次下载，后续会直接复用本机文件。')
     ];
@@ -91,10 +100,10 @@
     }
     el('setup-environment').textContent='微信 '+(info.wechat_version||'未检测到')+' · 已验证版本 '+info.tested_wechat_version+'（其他版本需实测）';
     el('setup-directory').textContent='本机数据目录：'+info.data_dir;
-    el('setup-exit-guide').textContent=info.runtime==='app'?'关闭网页不会退出应用。请用 Dock 的“退出 ChatSeek”停止后台。':'关闭网页不会停止源码后台；从终端启动时，请在启动终端按 Ctrl+C 退出。';
+    el('setup-exit-guide').textContent=windows?'关闭网页不会退出后台，请在 ChatSeek 控制台按 Ctrl+C 退出。':info.runtime==='app'?'关闭网页不会退出应用。请用 Dock 的“退出 ChatSeek”停止后台。':'关闭网页不会停止源码后台；从终端启动时，请在启动终端按 Ctrl+C 退出。';
     const checks=el('setup-environment-checks');checks.replaceChildren();
     for(const item of info.environment.checks){const li=document.createElement('li');li.textContent=(item.passed?'✓ ':'○ ')+item.label;li.dataset.passed=String(item.passed);checks.append(li);}
-    el('setup-account-intro').textContent=accountUI.intro;
+    el('setup-account-intro').textContent=windows&&accountUI.initialize?'保持微信登录所选账号，然后开始首次接入。':windows&&info.bootstrap.running?'正在本机检查读取凭据，请保持微信登录。':accountUI.intro;
     el('setup-account-badge').textContent=accountUI.badge;
     el('setup-account-empty').hidden=!accountUI.noData;
     el('setup-account-chooser').hidden=!accountUI.chooser;
@@ -167,6 +176,7 @@
   el('setup-account').onchange=render;
   el('setup-change-account').onclick=()=>{choosingAccount=true;messages[1]='';render();};
   el('setup-refresh-accounts').onclick=()=>run(1,async()=>{});
+  el('setup-use-root').onclick=()=>run(1,async()=>{await api('setup-account',{account:el('setup-custom-root').value.trim()});});
   el('setup-bootstrap').onclick=()=>run(1,()=>api('setup-bootstrap',{acknowledged:el('setup-ack').checked}));
   el('setup-check-wechat').onclick=()=>run(1,()=>api('setup-check-wechat',{}));
   el('setup-permission').onclick=()=>run(1,()=>api('access-settings',{}));

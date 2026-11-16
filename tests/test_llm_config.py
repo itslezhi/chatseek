@@ -50,7 +50,7 @@ class PersonalModelTests(unittest.TestCase):
             status=setup.status(private)
             self.assertTrue(status['api_configured']);self.assertEqual(status['model_config']['vision_model'],'vendor/vision')
             self.assertNotIn('personal-secret-placeholder',json.dumps(status))
-            self.assertEqual((private/'.env').stat().st_mode&0o777,0o600)
+            if os.name != 'nt':self.assertEqual((private/'.env').stat().st_mode&0o777,0o600)
 
     def test_existing_beta_credential_is_ignored_without_explicit_opt_in(self):
         with tempfile.TemporaryDirectory() as folder,patch.object(rag,'PRIVATE',Path(folder)),patch.dict(os.environ,{},clear=True):

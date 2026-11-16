@@ -24,10 +24,10 @@ ASSETS = rag.ROOT / 'web'
 
 def access_settings():
     try:
-        mode = json.loads((rag.PRIVATE/'web-access.json').read_text()).get('mode')
+        mode = json.loads((rag.PRIVATE/'web-access.json').read_text(encoding='utf-8')).get('mode')
     except (OSError, ValueError, AttributeError):
         mode = 'ask'
-    return {'mode':mode if mode in ('ask','full') else 'ask', 'system_permission':'manual'}
+    return {'mode':mode if mode in ('ask','full') else 'ask', 'system_permission':'manual','platform':sys.platform}
 
 
 def set_access_mode(mode):
@@ -50,10 +50,12 @@ def set_access_mode(mode):
 
 
 def needs_access_confirmation(action, data):
-    return action in ('ask','select','sync','media-preview','media-recognize','media-import','rag-index') or (action=='watch' and data.get('enabled') is True)
+    return action in ('ask','select','sync','export','media-preview','media-recognize','media-import','rag-index') or (action=='watch' and data.get('enabled') is True)
 
 
 def open_access_settings():
+    if sys.platform=='win32':
+        return {'opened':False,'message':'请确认 ChatSeek 与微信使用同一 Windows 用户和权限级别，并在安全软件中允许读取所选数据目录。'}
     if sys.platform!='darwin':
         raise RuntimeError('当前系统不支持打开 macOS 权限设置。')
     # Open the pane only. The user must grant system permissions themselves.
@@ -278,6 +280,23 @@ class Handler(BaseHTTPRequestHandler):
             action = urlsplit(self.path).path.removeprefix('/api/')
             if needs_access_confirmation(action,data) and access_settings()['mode']=='ask' and data.get('access_approved') is not True:
                 return self.send(409, {'error':'请先允许本次访问，再继续操作。','access_confirmation_required':True})
+            if action == 'export':
+                from wechat_export import prepare
+                from urllib.parse import quote
+                import shutil
+                file,filename=prepare(data.get('context'),data.get('format','html'))
+                with file:
+                    file.seek(0,2);length=file.tell();file.seek(0)
+                    self.send_response(200)
+                    self.send_header('Content-Type','application/octet-stream')
+                    self.send_header('Content-Disposition',"attachment; filename=chatseek-export; filename*=UTF-8''"+quote(filename))
+                    self.send_header('Content-Length',str(length))
+                    self.send_header('Cache-Control','no-store')
+                    self.send_header('X-Content-Type-Options','nosniff')
+                    self.end_headers()
+                    try:shutil.copyfileobj(file,self.wfile)
+                    except (BrokenPipeError,ConnectionResetError):pass
+                return
             if action == 'ask' and data.get('stream') is True:
                 return self.stream_answer(data)
             if action.startswith('setup-'):

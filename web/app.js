@@ -37,7 +37,7 @@ async function api(action, data) {
   return result;
 }
 function needsAccessConfirmation(action,data){
-  return ['ask','select','sync','media-preview','media-recognize','media-import','rag-index'].includes(action) || (action==='watch' && data.enabled===true);
+  return ['ask','select','sync','export','media-preview','media-recognize','media-import','rag-index'].includes(action) || (action==='watch' && data.enabled===true);
 }
 async function authorizeAccess(action,data){
   await accessReady;
@@ -52,13 +52,14 @@ async function authorizeAccess(action,data){
 function renderAccessMode(){
   $('access-mode').value=accessMode;
   $('access-help-button').textContent=accessMode==='full'?'系统授权设置':'权限说明';
-  $('access-mode').title=accessMode==='full'?'跳过应用内确认；macOS 系统权限仍需手动授权':'提问或访问原始聊天、媒体前，先确认本次访问';
+  $('access-mode').title=accessMode==='full'?'跳过应用内确认；系统权限仍需手动授权':'提问或访问原始聊天、媒体前，先确认本次访问';
 }
 function confirmAccess(action){
   const messages={
     'rag-index':'将在本机为当前会话建立语义向量索引，聊天不会发送至向量服务。首次运行需要下载公共模型。',
     ask:'将读取当前会话的聊天记录，并可能读取相关图片、视频或表情包。问题、相关记录和结合的历史问答会发送至你配置的模型服务；范围总结会发送范围内全部聊天文字。',
     select:'将查找本机联系人或群聊，并同步你选择的会话记录。',
+    export:'将同步并导出当前会话在本机可读取的全部历史。文件仅下载到你的电脑，不调用模型。',
     sync:'将读取当前会话在本机的原始聊天记录，更新本地索引。',
     watch:'将开启当前会话的持续同步，后台每 5 秒读取一次新消息，直到你暂停同步。',
     'media-preview':'将读取这条消息的本机媒体文件并生成预览，不调用模型。',
@@ -73,7 +74,14 @@ function confirmAccess(action){
     dialog.showModal();
   });
 }
-accessReady=api('access').then(result=>{accessMode=result.mode;renderAccessMode();}).catch(error=>{
+accessReady=api('access').then(result=>{
+  accessMode=result.mode;renderAccessMode();
+  if(result.platform==='win32'){
+    $('mac-access-guide').hidden=true;
+    const guide=document.createElement('p');guide.textContent='Windows：请让微信与 ChatSeek 使用同一用户和权限级别，并允许访问所选微信数据目录。首次接入时保持微信登录。';
+    $('access-help').append(guide);
+  }
+}).catch(error=>{
   accessMode='ask';renderAccessMode();notice('权限设置读取失败，已按询问请求处理：'+error.message);
 });
 $('access-mode').addEventListener('change',async()=>{
@@ -90,7 +98,7 @@ $('access-mode').addEventListener('change',async()=>{
 $('access-help-button').addEventListener('click',()=>$('access-help').showModal());
 $('open-system-access').addEventListener('click',async()=>{
   const button=$('open-system-access');button.disabled=true;
-  try{await api('access-settings',{});$('access-settings-status').textContent='已打开系统设置。请手动授权，再退出并重新启动获得授权的应用和网页服务。';}
+  try{const result=await api('access-settings',{});$('access-settings-status').textContent=result.message||'已打开系统设置。请手动授权，再退出并重新启动获得授权的应用和网页服务。';}
   catch(error){$('access-settings-status').textContent=error.message;}
   finally{button.disabled=false;}
 });
@@ -534,3 +542,19 @@ function renderVectorIndex(index){
   text.title='本地 BGE 向量模型；纯向量模式不使用关键词预筛选';
 }
 $('vector-rebuild').addEventListener('click',()=>operation(async()=>{await api('rag-index',{context:state?.context});notice('已安排本地索引更新，可以继续查看历史问答。',5000);}));
+
+$('export-history').addEventListener('click',()=>operation(async()=>{
+  if(!state?.context)throw new Error('请先选择一个会话。');
+  const button=$('export-history'),context=state.context,format=$('export-format').value;
+  const data=await authorizeAccess('export',{context,format});
+  button.disabled=true;button.textContent='正在同步并导出…';
+  try{
+    const response=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json','X-WeChat-RAG':'1'},body:JSON.stringify(data)});
+    if(!response.ok){const result=await response.json();throw new Error(result.error||'导出失败');}
+    const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+    const disposition=response.headers.get('Content-Disposition')||'';
+    link.download=decodeURIComponent(disposition.split("filename*=UTF-8''")[1]||('ChatSeek.'+format));
+    link.href=url;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    notice('已导出所选会话的全部本机历史。');
+  }finally{button.disabled=false;button.textContent='导出全部历史';}
+}));

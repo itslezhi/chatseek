@@ -1,10 +1,10 @@
 # ChatSeek
 
-在自己的 Mac 上检索微信聊天，用自己配置的大模型 API 问答和总结，并查看回答引用的原文。
+在自己的 Mac 或 Windows 电脑上检索微信聊天，用自己配置的大模型 API 问答和总结，并查看回答引用的原文。
 
 聊天同步、关键词搜索、SQLite 存储和 BGE 向量计算在本机完成。AI 问答会将问题、聊天证据及必要历史问答发送到**你配置的模型 API**；完整范围总结可能发送所选范围全部已同步文字。默认不连接项目作者的服务器，不需要邀请码、网站或自建网关，API 费用由用户与模型服务商结算。
 
-> 当前是开发者预览版。微信读取流程面向 **Apple Silicon 原生 macOS**，开发环境验证记录为微信 4.1.15、macOS 26.4。跨机器首次接入仍需验证；Windows、Intel Mac 和其他微信版本尚未支持或验证。当前读取本机微信数据库，没有完整聊天历史文件导入器。
+> 当前是开发者预览版。微信读取流程面向 **Apple Silicon 原生 macOS**，开发环境验证记录为微信 4.1.15、macOS 26.4。新增 **Windows 10/11 x64 + 微信 4.x** 的实验性接入。Windows 的进程扫描及真实账号连续同步尚待实机验证，不能将合成测试视为所有微信版本都兼容；微信 3.x、Intel Mac 暂不支持。当前读取本机微信数据库，没有完整聊天历史文件导入器。
 
 ## 功能
 
@@ -12,9 +12,36 @@
 - 本地关键词搜索、512 维 BGE/FAISS 向量检索与可选混合检索。
 - 带原文引用的问答、连续追问、日期筛选和完整范围总结；范围过大时分批阅读。
 - 问答历史、新对话、归档、最近删除，以及图片/视频抽帧预览和可选视觉识别。
-- 浏览器界面、命令行和可选的 Mac `.app` 启动器。
+- 浏览器界面、命令行、Mac `.app` 和 Windows 启动脚本 / 可构建的 `.exe`。
+- 当前好友或群聊的全部本机历史导出为 HTML、TXT、JSON；不受页面 500 条显示上限限制。
 
-## 从源码启动
+## Windows 启动与持续同步
+
+需要 Windows 10/11 x64、64 位 Python 3.12、微信 4.x 和联网安装依赖。克隆或解压项目后双击 `start_windows.cmd`，首次创建虚拟环境并安装固定版本依赖，随后自动打开网页。保持控制台窗口运行；按 Ctrl+C 正常退出。源码依赖包含 Windows SQLCipher wheel，无需安装 LLDB 或 Xcode。
+
+1. 在 Windows 微信登录你要使用的账号，保持登录，并打开要同步的会话。
+2. 在配置向导检查环境。自动发现 `Documents\xwechat_files`（含系统重定向的文档目录）和注册表记录的数据位置；自定义位置可直接填写 `db_storage` 的完整路径，例如 `D:\WeChat\xwechat_files\账号目录\db_storage`。也可通过 `CHATSEEK_WECHAT_DIR` 指定搜索根目录。
+3. 确认账号后勾选 Windows 只读接入说明，点击“开始首次接入”。程序仅扫描**当前 Windows 用户**的 `Weixin.exe` / `WeChat.exe` 可读内存，寻找 SQLCipher 原始密钥缓冲区，并实际验证所选账号的联系人及全部消息分片；不注入代码、不改微信文件、不保存内存转储。未全部验证则不保存凭据，可以重试。扫描最多约 120 秒。
+4. 点击验证读取，继续配置自己的模型 API 和本地向量模型。已保存的接入凭据在下次启动复用。
+5. 输入好友完整昵称或备注，选择会话，再开启右上角自动同步；每 5 秒跟随当前选中的会话更新本机记录。
+
+如果提示无法读取进程，先确认微信和 ChatSeek 使用同一 Windows 用户及权限级别。若没有发现全部密钥，打开目标会话后重试；微信升级可能改变内存布局或数据库结构，此时会显示失败，不能保证自动适配。不会要求关闭安全软件或系统保护。媒体解码沿用现有实现，Windows 各版本媒体格式仍需实测。
+
+Windows 启动器默认数据目录是 `%LOCALAPPDATA%\ChatSeek`；直接运行 `wechat_rag.py web` 默认仍使用项目 `.private`。请使用同一种启动方式，或通过 `CHATSEEK_DATA_DIR` 显式指定同一目录，以免误以为需要重新初始化。Windows 文件访问由 NTFS ACL 控制，不使用 Unix 权限位作为判断依据。
+
+手动启动（PowerShell）：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -X utf8 chatseek_desktop.py
+```
+
+## 导出一个人的全部历史
+
+先选择该好友，进入“聊天记录”，选择 HTML、TXT 或 JSON，点击“导出全部历史”。导出前会继续同步到导出开始时的消息进度，超过单次同步批次上限也会接着读取；失败不会生成声称完整的文件。导出不调用模型，包含完整长文字、发送者、北京时间及非文字消息类型标记。导出的是本机能够读取的历史，无法补齐手机独有、已删除或尚未迁移的消息；本功能不打包媒体文件。HTML 会转义聊天中的标签和脚本，JSON 适合后续处理。
+
+## macOS 从源码启动
 
 需要 Apple Silicon Mac、Python 3.12、联网安装依赖。当前二进制依赖要求 macOS 14 或更新；这不代表所有系统/微信版本均已验证。微信首次接入还需要 Xcode Command Line Tools 中的 `/usr/bin/lldb` 和系统 Python。
 
@@ -80,7 +107,7 @@ LLM_JSON_MODE=true
 
 当前没有自动脱敏，也不能逐次预览完整外发请求。使用前应确认你对相关记录有处理权限，并理解模型服务商对数据的处理方式。
 
-源码运行的数据在 `.private/`，个人模型配置可位于项目 `.env` 或 `.private/.env`；可通过 `CHATSEEK_DATA_DIR` 使用独立目录。`.app` 默认使用 `~/Library/Application Support/ChatSeek/`。本机保存聊天原文、问答、媒体描述、缓存和微信数据库密钥；目前使用普通 SQLite 和权限受限文件，**未作应用层加密**。
+源码运行的数据在 `.private/`，个人模型配置可位于项目 `.env` 或 `.private/.env`；可通过 `CHATSEEK_DATA_DIR` 使用独立目录。`.app` 默认使用 `~/Library/Application Support/ChatSeek/`，Windows 启动器默认使用 `%LOCALAPPDATA%\ChatSeek`。本机保存聊天原文、问答、媒体描述、缓存和微信数据库密钥；目前使用普通 SQLite 和权限受限文件，**未作应用层加密**。
 
 “最近删除”只改变问答状态，不会清除原始聊天索引。源码版需要先停止网页、自动同步及模型进程，再自行管理数据目录；Mac 启动器菜单提供清除 ChatSeek 聊天索引、问答及媒体的入口，保留初始化密钥、模型及账号配置。所有操作均不删除原版微信数据库。
 
@@ -99,6 +126,17 @@ LLM_JSON_MODE=true
 ```
 
 同名联系人需要根据返回候选指定 `--id`。当前仅同步选中的一个会话，不能自动补齐手机上未迁移到电脑的记录。完整范围总结覆盖的是本机已同步记录，媒体标记不代表理解了图片、视频或语音。引用编号检查不能证明所有事实推理都正确，请查看原文核对。
+
+## 可选：构建 Windows 应用
+
+在原生 Windows x64 环境执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe -X utf8 scripts/build_windows.py
+```
+
+输出 `dist/ChatSeek/ChatSeek.exe` 和 `dist/ChatSeek-Windows-x64.zip`。保留整个目录，不要单独复制 EXE。构建脚本运行数据库、FAISS、FFmpeg 自检；这不替代真实微信账号验收。当前未提供已签名 Windows 安装包。
 
 ## 可选：构建 Mac 应用
 

@@ -5,7 +5,7 @@ import base64
 import json
 import os
 from pathlib import Path
-import selectors
+import queue
 import subprocess
 import sys
 import threading
@@ -39,14 +39,15 @@ def close_worker():
         process=_process;_process=None;_buffer=b''
         _ready=False;_cache_path=None
         if process is None:return
-        for stream in (process.stdin,process.stdout):
-            if stream:
-                try:stream.close()
-                except OSError:pass
         if process.poll() is None:
             process.terminate()
             try:process.wait(timeout=3)
             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3)
+        for stream in (process.stdin,process.stdout):
+            if stream:
+                try:stream.close()
+                except OSError:pass
+
 
 
 atexit.register(close_worker)
@@ -55,17 +56,36 @@ atexit.register(close_worker)
 def _read(process,timeout):
     global _buffer
     deadline=time.monotonic()+timeout
-    with selectors.DefaultSelector() as selector:
-        selector.register(process.stdout,selectors.EVENT_READ)
-        while b'\n' not in _buffer:
-            if _stopping.is_set():raise EOFError()
-            remaining=deadline-time.monotonic()
-            if remaining<=0:raise TimeoutError()
-            if not selector.select(min(remaining,1)):continue
-            chunk=os.read(process.stdout.fileno(),65536)
-            if not chunk:raise EOFError()
-            _buffer+=chunk
-            if len(_buffer)>64*1024*1024:raise ValueError()
+    # Windows select() only accepts sockets, never anonymous subprocess pipes.
+    if not hasattr(process, '_chatseek_output'):
+        output = queue.Queue(maxsize=16)
+        process._chatseek_output = output
+        def put(chunk):
+            while process.poll() is None:
+                try: output.put(chunk, timeout=.2); return
+                except queue.Full: pass
+            try: output.put_nowait(chunk)
+            except queue.Full: pass
+        def pump():
+            try:
+                while True:
+                    chunk = os.read(process.stdout.fileno(), 65536)
+                    if not chunk: break
+                    put(chunk)
+            except (OSError, ValueError): pass
+            finally: put(None)
+        threading.Thread(target=pump, daemon=True).start()
+    while b'\n' not in _buffer:
+        if _stopping.is_set():raise EOFError()
+        remaining=deadline-time.monotonic()
+        if remaining<=0:raise TimeoutError()
+        try:chunk=process._chatseek_output.get(timeout=min(remaining,1))
+        except queue.Empty:
+            if process.poll() is not None:raise EOFError()
+            continue
+        if chunk is None:raise EOFError()
+        _buffer+=chunk
+        if len(_buffer)>64*1024*1024:raise ValueError()
     line,_buffer=_buffer.split(b'\n',1)
     value=json.loads(line)
     if not isinstance(value,dict) or 'error' in value:raise ValueError()

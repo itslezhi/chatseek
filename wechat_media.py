@@ -100,7 +100,7 @@ def image_keys(reader, private, samples):
     file = private/'media-keys.json'
     if file.exists():
         if file.stat().st_mode & 0o077: raise RuntimeError('媒体密钥文件权限应为 600。')
-        value = json.loads(file.read_text())
+        value = json.loads(file.read_text(encoding='utf-8'))
         key, xor = bytes.fromhex(value['aes_key']), int(value['xor_key'])
         if len(key) == 16 and 0 <= xor <= 255:
             for data in samples:

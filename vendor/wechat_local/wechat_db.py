@@ -26,7 +26,7 @@ def private_write(path, data):
     import tempfile
     fd, tmp = tempfile.mkstemp(prefix='.state-', dir=path.parent)
     try:
-        with os.fdopen(fd, 'w') as f:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
@@ -216,7 +216,7 @@ def main():
         private_write(args.state,state)
         emit({'type':'baseline', 'cursor':state['cursor'], 'old_messages_are_not_new':True})
         return 0
-    state = json.loads(args.state.read_text())
+    state = json.loads(args.state.read_text(encoding='utf-8'))
     if args.command == 'ack':
         requested = json.loads(args.cursor)
         batch = reader.check(state)
@@ -240,7 +240,7 @@ def main():
     deadline = time.monotonic()+args.seconds
     last = None
     while time.monotonic() < deadline:
-        state = json.loads(args.state.read_text())
+        state = json.loads(args.state.read_text(encoding='utf-8'))
         batch = reader.check(state)
         signature = json.dumps(batch['ack_cursor'],sort_keys=True)
         if batch['new_messages'] and signature != last:

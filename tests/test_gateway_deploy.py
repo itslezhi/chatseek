@@ -1,4 +1,5 @@
 import importlib.util
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
@@ -14,7 +15,7 @@ class GatewayDeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / 'usage.sqlite3'
-            with sqlite3.connect(source) as live:
+            with closing(sqlite3.connect(source)) as live:
                 live.execute('PRAGMA journal_mode=WAL')
                 live.execute('CREATE TABLE quota (used INTEGER)')
                 live.execute('INSERT INTO quota VALUES (12)')
@@ -22,15 +23,15 @@ class GatewayDeploymentTests(unittest.TestCase):
                 # Keep the writer open so committed data can still be in WAL.
                 copy = backup(source, root / 'backups')
             source.unlink()
-            with sqlite3.connect(copy) as restored:
+            with closing(sqlite3.connect(copy)) as restored:
                 self.assertEqual(restored.execute('SELECT used FROM quota').fetchone()[0], 12)
-            self.assertEqual(os.stat(copy).st_mode & 0o777, 0o600)
+            if os.name != 'nt':self.assertEqual(os.stat(copy).st_mode & 0o777, 0o600)
 
     def test_retention_preserves_unrelated_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / 'usage.sqlite3'
-            with sqlite3.connect(source) as live:
+            with closing(sqlite3.connect(source)) as live:
                 live.execute('CREATE TABLE quota (used INTEGER)')
             directory = root / 'backups'
             directory.mkdir()

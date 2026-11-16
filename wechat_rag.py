@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
-import fcntl
+import chatseek_platform as fcntl
 import hashlib
 import json
 import os
@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 from wechat_context import ContextLimitError, OutputLimitError, context_error, direct_fits, context_capacity
 from wechat_query import plan_question
 from chatseek_runtime import data_dir, config_path, child_command
+from chatseek_platform import child_options, terminate_watcher
 from chatseek_llm import FIELDS as LLM_FIELDS, normalized, completion_url, provider_options
 
 ROOT = Path(__file__).resolve().parent
@@ -178,7 +179,7 @@ def env_config(path=None):
     path = Path(path) if path is not None else (PRIVATE/'.env' if (PRIVATE/'.env').exists() else config_path())
     result = {}
     if path.exists():
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding='utf-8').splitlines():
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
@@ -336,7 +337,7 @@ class Store:
 
 def load_runtime():
     target_file = PRIVATE / 'target.json'
-    target = json.loads(target_file.read_text()) if target_file.exists() else json.loads((PRIVATE / 'account.json').read_text())
+    target = json.loads(target_file.read_text(encoding='utf-8')) if target_file.exists() else json.loads((PRIVATE / 'account.json').read_text(encoding='utf-8'))
     reader = Reader(target['db_root'], PRIVATE / 'wechat-init/keys.json')
     return target, reader
 
@@ -407,7 +408,7 @@ def select_contact(name, contact_id=None):
         # Publish only after successful sync; failed lookups never change selection.
         temporary = PRIVATE/'target.new'
         fd = os.open(temporary, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w') as handle:
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(chosen, handle, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())
@@ -835,7 +836,7 @@ def start_watch(interval):
     log_fd = os.open(PRIVATE/'sync.log',os.O_CREAT|os.O_WRONLY|os.O_APPEND,0o600)
     with os.fdopen(log_fd,'a') as log:
         proc = subprocess.Popen(child_command('watch','--interval',str(interval)),
-                 cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+                 cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,**child_options())
     (PRIVATE/'sync.pid').write_text(str(proc.pid))
     os.chmod(PRIVATE/'sync.pid',0o600)
     time.sleep(0.5)
@@ -848,12 +849,9 @@ def stop_watch():
     pidfile = PRIVATE/'sync.pid'
     if not pidfile.exists():
         return {'stopped':False,'reason':'没有本项目启动的同步进程'}
-    pid = int(pidfile.read_text())
-    command = subprocess.run(['ps','-p',str(pid),'-o','command='],capture_output=True,text=True).stdout
-    expected = sys.executable+' --chatseek-watch' if getattr(sys,'frozen',False) else str(Path(__file__).resolve())+' watch'
-    if expected in command:
-        os.kill(pid,signal.SIGTERM)
-        pidfile.unlink()
+    pid = int(pidfile.read_text(encoding='utf-8'))
+    if terminate_watcher(pid, child_command('watch')):
+        pidfile.unlink(missing_ok=True)
         return {'stopped':True}
     return {'stopped':False,'reason':'进程已退出或 PID 已变化，未终止其他进程'}
 

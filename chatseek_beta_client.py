@@ -16,7 +16,7 @@ def private_json(path, value):
     os.chmod(path.parent, 0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent)
     try:
-        with os.fdopen(fd, 'w') as handle:
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(value, handle, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())
@@ -27,7 +27,7 @@ def private_json(path, value):
 
 def settings(private):
     try:
-        return json.loads((Path(private)/'beta.json').read_text())
+        return json.loads((Path(private)/'beta.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return {}
 

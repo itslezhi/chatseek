@@ -9,6 +9,8 @@ import threading
 import signal
 import re
 import hashlib
+import sys
+_windows_cancel = threading.Event()
 from chatseek_beta_client import private_json
 
 _lock = threading.Lock()
@@ -24,7 +26,7 @@ def _digest(value):
 
 def _checks(private):
     try:
-        value=json.loads((Path(private)/'setup-checks.json').read_text())
+        value=json.loads((Path(private)/'setup-checks.json').read_text(encoding='utf-8'))
         return value if isinstance(value,dict) else {}
     except (OSError,ValueError):
         return {}
@@ -37,6 +39,12 @@ def _remember(private,name,signature):
 
 
 def _environment():
+    if sys.platform == 'win32':
+        from chatseek_windows import supported
+        import importlib.util
+        checks=[{'label':'64 位 Windows 10/11 与 Python 3.12', 'passed':supported()},
+                {'label':'SQLCipher 数据库依赖', 'passed':importlib.util.find_spec('sqlcipher3') is not None}]
+        return {'checks':checks, 'signature':_digest(checks), 'ready':all(c['passed'] for c in checks)}
     native=platform.system()=='Darwin' and platform.machine()=='arm64'
     version=platform.mac_ver()[0]
     recent=bool(version and int(version.split('.')[0])>=14)
@@ -57,7 +65,7 @@ def _wechat_signature(private):
     private=Path(private)
     account=private/('target.json' if (private/'target.json').exists() else 'account.json')
     try:
-        root=json.loads(account.read_text())['db_root']
+        root=json.loads(account.read_text(encoding='utf-8'))['db_root']
         keys=hashlib.sha256((private/'wechat-init/keys.json').read_bytes()).hexdigest()
         return _digest({'root':root,'keys':keys})
     except (OSError,ValueError,KeyError,TypeError):
@@ -79,6 +87,7 @@ def model_status(private):
 
 
 def stop_bootstrap():
+    _windows_cancel.set()
     process = _process
     if process is not None and process.poll() is None:
         os.killpg(process.pid,signal.SIGINT)
@@ -87,6 +96,9 @@ def stop_bootstrap():
 
 
 def accounts():
+    if sys.platform == 'win32':
+        from chatseek_windows import accounts as windows_accounts
+        return windows_accounts()
     base = Path.home()/'Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files'
     return sorted(p.resolve() for p in base.glob('*/db_storage') if p.is_dir())
 
@@ -95,7 +107,7 @@ def _selected_account(private):
     private=Path(private)
     path=private/('target.json' if (private/'target.json').exists() else 'account.json')
     try:
-        root=json.loads(path.read_text()).get('db_root')
+        root=json.loads(path.read_text(encoding='utf-8')).get('db_root')
         return Path(root).expanduser().resolve() if isinstance(root,str) and root else None
     except (OSError,ValueError,TypeError,AttributeError):
         return None
@@ -103,7 +115,7 @@ def _selected_account(private):
 
 def _account_profile(private,signature):
     try:
-        profile=json.loads((Path(private)/'account-profile.json').read_text())
+        profile=json.loads((Path(private)/'account-profile.json').read_text(encoding='utf-8'))
         if signature and profile.get('signature')==signature:
             return profile
     except (OSError,ValueError,AttributeError):
@@ -179,7 +191,7 @@ def status(private):
     from chatseek_llm import public_settings
     config=rag.env_config()
     try:
-        defaults=json.loads((rag.ROOT/'beta-defaults.json').read_text())
+        defaults=json.loads((rag.ROOT/'beta-defaults.json').read_text(encoding='utf-8'))
     except (OSError,ValueError):
         defaults={}
     environment=_environment()
@@ -192,9 +204,9 @@ def status(private):
               'model':model['ready']}
     connection=connection_status(private,accounts(),verified['wechat'])
     if connection['state']=='needs_attention':verified['wechat']=False
-    return {'supported':platform.system()=='Darwin' and platform.machine()=='arm64',
+    return {'supported':environment['ready'],'platform':sys.platform,
             'gateway_url':defaults.get('gateway_url',''),
-            'wechat_version':version,'tested_wechat_version':'4.1.15',
+            'wechat_version':version,'tested_wechat_version':'Windows 4.x（待实机验证）' if sys.platform=='win32' else '4.1.15',
             'lldb_available':Path('/usr/bin/lldb').exists(),
             'accounts':connection['choices'],'wechat_connection':connection,
             'keys_ready':(private/'wechat-init/keys.json').exists(),
@@ -218,6 +230,9 @@ def check_environment(private):
     info=_environment()
     if not info['ready']:
         raise RuntimeError('环境检查未通过：'+'、'.join(c['label'] for c in info['checks'] if not c['passed']))
+    if sys.platform == 'win32':
+        _remember(private,'environment',info['signature'])
+        return {'verified':True}
     try:
         result=subprocess.run(['/usr/bin/lldb','-P'],capture_output=True,timeout=20)
     except (OSError,subprocess.TimeoutExpired):
@@ -272,13 +287,16 @@ def prepare_model(private):
 def choose_account(private, value):
     if _job['running']:
         raise RuntimeError('首次接入正在进行，请完成或退出当前流程后再选择。')
-    if not isinstance(value,str) or Path(value).resolve() not in accounts():
+    if sys.platform == 'win32':
+        from chatseek_windows import validate_root
+        value = str(validate_root(value))
+    elif not isinstance(value,str) or Path(value).resolve() not in accounts():
         raise ValueError('请选择检测到的本机账号。')
     private = Path(private)
     if (private/'target.json').exists():
         raise RuntimeError('这个数据目录已接入过微信账号；更换账号请使用独立的 ChatSeek 数据目录。')
     existing = private/'account.json'
-    if existing.exists() and json.loads(existing.read_text())['db_root']!=value and (private/'wechat-init/keys.json').exists():
+    if existing.exists() and json.loads(existing.read_text(encoding='utf-8'))['db_root']!=value and (private/'wechat-init/keys.json').exists():
         raise RuntimeError('已有另一账号的密钥，请使用独立用户数据目录。')
     private_json(existing,{'db_root':value,'chat_id':'','display_name':''})
     return status(private)
@@ -290,6 +308,8 @@ def start_bootstrap(private, acknowledged):
     if acknowledged is not True:
         raise ValueError('请先阅读并同意临时副本初始化说明。')
     _require(private,'environment')
+    if sys.platform == 'win32':
+        return start_windows_bootstrap(private)
     current = status(private)
     if not current['supported'] or not current['account_ready'] or not current['lldb_available']:
         raise RuntimeError('需要 Apple Silicon Mac、可用 LLDB，并先选择微信账号。')
@@ -332,6 +352,32 @@ def start_bootstrap(private, acknowledged):
     return dict(_job)
 
 
+def start_windows_bootstrap(private):
+    global _job
+    from chatseek_windows import capture
+    root=_selected_account(private)
+    if root is None:raise RuntimeError('请先选择本机微信数据。')
+    destination=Path(private)/'wechat-init/keys.json'
+    with _lock:
+        if _job['running']:raise RuntimeError('微信接入正在进行。')
+        if destination.parent.exists():raise RuntimeError('已有初始化目录，请保留并检查；不会覆盖原凭据。')
+        _windows_cancel.clear()
+        _job={'running':True,'completed':False,'message':'请保持微信登录，正在本机验证读取凭据…'}
+    def run():
+        global _job
+        try:
+            result=capture(root,_windows_cancel,lambda message:_job.update(message=message))
+            if _windows_cancel.is_set():raise RuntimeError('已取消微信接入。')
+            private_json(destination,result)
+            _job={'running':False,'completed':True,'message':'接入完成。请验证读取并核对账号；微信可以保持登录。'}
+        except RuntimeError as exc:
+            _job={'running':False,'completed':False,'message':str(exc)}
+        except Exception:
+            _job={'running':False,'completed':False,'message':'Windows 微信读取失败，请检查账号、权限和依赖后重试。'}
+    threading.Thread(target=run,daemon=True).start()
+    return dict(_job)
+
+
 def _api_values(key, *, base_url='https://api.deepseek.com',model='deepseek-flash',vision_model=None,
              context_tokens=128000,max_output_tokens=8192,json_mode=True):
     from chatseek_llm import validate_base_url
@@ -355,7 +401,7 @@ def save_api(private,key,**options):
     path = Path(private)/'.env'
     fd,tmp = tempfile.mkstemp(dir=Path(private))
     try:
-        with os.fdopen(fd,'w') as handle:
+        with os.fdopen(fd,'w',encoding='utf-8') as handle:
             handle.write(''.join(f'{name}={value}\n' for name,value in values.items()))
         os.replace(tmp,path)
     finally:Path(tmp).unlink(missing_ok=True)

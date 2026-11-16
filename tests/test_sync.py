@@ -1,3 +1,4 @@
+import os
 from legacy_support import isolate
 import copy
 import json
@@ -251,7 +252,7 @@ class SelectionTests(unittest.TestCase):
         app.select_contact('原好友')
         selected = json.loads((self.private/'target.json').read_text())
         self.assertEqual(app.store_path(selected), (self.private/'chat.sqlite3').resolve())
-        self.assertEqual((self.private/'target.json').stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':self.assertEqual((self.private/'target.json').stat().st_mode & 0o777, 0o600)
 
     def test_id_disambiguates_and_failed_sync_does_not_switch(self):
         self.reader.resolve = lambda name: [self.contact, dict(self.contact, username='duplicate')]
